@@ -1,0 +1,145 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  Username       String?
+  Email          String
+  IDUser         Int        @id @default(autoincrement())
+  FirstName      String?
+  LastName       String?
+  UserRoleID     Int?
+  IoTAccessToken String?
+  Comments       Comment[]
+  Tickets        Ticket[]
+  UserRole       UserRole[] @relation("UserToUserRole")
+}
+
+model UserRole {
+  IDRole   Int      @id @default(autoincrement())
+  RoleName String
+  Users    User[]   @relation("UserToUserRole")
+}
+
+model Customer {
+  IDCustomer   Int      @id @default(autoincrement())
+  CustomerName String
+  ContactName  String
+  Email        String
+  Tickets      Ticket[]
+}
+
+model Image {
+  IDImage   Int      @id @default(autoincrement())
+  url       String
+  TicketID  Int?
+  CommentID Int?
+  GuestTicketID Int?
+  Comment   Comment? @relation(fields: [CommentID], references: [IDComment])
+  Ticket    Ticket?  @relation(fields: [TicketID], references: [IDTicket])
+  GuestTicket GuestTicket? @relation(fields: [GuestTicketID], references: [IDGuestTicket])
+}
+
+model File {
+  IDFile    Int      @id @default(autoincrement())
+  url       String
+  name      String
+  TicketID  Int?
+  CommentID Int?
+  GuestTicketID Int?
+  Comment   Comment? @relation(fields: [CommentID], references: [IDComment])
+  Ticket    Ticket?  @relation(fields: [TicketID], references: [IDTicket])
+  GuestTicket GuestTicket? @relation(fields: [GuestTicketID], references: [IDGuestTicket])
+}
+
+model Comment {
+  IDComment Int      @id @default(autoincrement())
+  Content   String
+  TicketID  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  UserID    Int?
+  Ticket    Ticket   @relation(fields: [TicketID], references: [IDTicket])
+  User      User?    @relation(fields: [UserID], references: [IDUser])
+  Files     File[]
+  Images    Image[]
+}
+
+model M2MToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @db.Text  // Stores the M2M token (large string)
+  expiry    BigInt   // UNIX timestamp representing when the token expires
+  createdAt DateTime @default(now())  // Automatically store the creation time
+  updatedAt DateTime @updatedAt       // Automatically update the time when a record is modified
+}
+
+model Ticket {
+  AssignedUserID Int?
+  Description    String?
+  Priority       String
+  Status         String?
+  Title          String?
+  IDTicket       Int         @id @default(autoincrement())
+  Department     String?
+  Site           String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  Category       String
+  incidentDate   DateTime?
+  VehicleID      String?
+  driversName    String?
+  CustomerID     Int?  
+  Dealer         String?
+  Contact        String?
+  Solution       String?
+  Supported      String?
+  Platform       String?
+  isEscalated    String?
+  Email          String?
+  Reporter       String?
+  Companyname    String?
+  JiraTicketID   Int?
+  TicketNumber   String?
+  Comments       Comment[]
+  Files          File[]
+  Images         Image[]
+  AssignedUser   User?       @relation(fields: [AssignedUserID], references: [IDUser])
+  Customer       Customer?   @relation(fields: [CustomerID], references: [IDCustomer])
+  JiraTicket     JiraTicket? @relation(fields: [JiraTicketID], references: [IDJiraTicket])
+}
+
+model JiraTicket {
+  IDJiraTicket   Int      @id @default(autoincrement())
+  key            String?
+  CreationDate   String?
+  Description    String?
+  ProjectKey     String?
+  ProjectName    String?
+  ProjectType    String?
+  Status         String?
+  StatusCategory String?
+  Type           String?
+  self           String?
+  Tickets        Ticket[]
+}
+
+
+model GuestTicket {
+  IDGuestTicket      Int      @id @default(autoincrement())
+  yourName           String
+  yourEmail          String
+  vehicleIdOrDriverName String
+  reportedBy         String
+  companyName        String
+  issue              String
+  issueTime          DateTime
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  Files              File[]
+  Images    Image[]
+}
