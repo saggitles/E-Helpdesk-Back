@@ -2892,7 +2892,8 @@ const getVehicleId = async (vehicles) => {
                       'calibrated', fvm."FSSS_BASE",
                       'surveyTimeout', fvm."survey_timeout",
                       'seatIdle', fvm."seat_idle",
-                      'impactRecalibrationDate', ews."impact_recalibration_date"
+                      'impactRecalibrationDate', ews."impact_recalibration_date",
+                      'preopSchedule', ews."preop_schedule" -- ✅ Added new field
                   ) AS vehicle_info,
 
                   -- Master Codes (Grouped as JSON Array)
@@ -2918,7 +2919,7 @@ const getVehicleId = async (vehicles) => {
               LEFT JOIN "FMS_USR_VEHICLE_REL" fuvr ON fvm."VEHICLE_CD" = fuvr."VEHICLE_CD"
               LEFT JOIN "FMS_DEPT_MST" fdm ON fuvr."DEPT_CD" = fdm."DEPT_CD"
 
-              -- Join for Vehicle Settings
+              -- Join for Vehicle Settings & Preop Schedule
               LEFT JOIN "equipment_website_settings" ews ON fvm."VEHICLE_ID" = ews."gmtp_id"
 
               -- Joins for Master Codes
@@ -2934,9 +2935,9 @@ const getVehicleId = async (vehicles) => {
               GROUP BY fvm."VEHICLE_CD", ev."gmtp_id", ev."hire_no", ev."serial_no", ev."firmware_ver", 
                       ev."product_type", ev."exp_mod_ver", fvm."LAST_EOS", fdm."DEPT_NAME", 
                       fvm."vor_setting", fvm."lockout_code", fvm."IMPACT_LOCKOUT", 
-                      fvm."FSSS_BASE", fvm."survey_timeout", fvm."seat_idle", ews."impact_recalibration_date";
+                      fvm."FSSS_BASE", fvm."survey_timeout", fvm."seat_idle", 
+                      ews."impact_recalibration_date", ews."preop_schedule"; -- ✅ Added to GROUP BY
 
-              
     `;
     
     console.log(`Executing Query: ${query} with vehicleIds:`, vehicles);
