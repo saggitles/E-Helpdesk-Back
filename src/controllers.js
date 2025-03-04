@@ -2726,7 +2726,7 @@ exports.getCategoryCount = async (req, res) => {
 
 exports.getCustomers = async (req, res) => {
   const client = new Client({
-    host: 'db-fleetiq-encrypt.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
+    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
     port: 5432,
     database: 'multi',
     user: 'gmtp',
@@ -2774,7 +2774,7 @@ exports.getSites = async (req, res) => {
     
 
     const client = new Client({
-      host: 'db-fleetiq-encrypt.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
+      host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
       port: 5432,
       database: 'multi',
       user: 'gmtp',
@@ -2801,7 +2801,7 @@ exports.getVehicles = async (req, res) => {
   }
 
   const client = new Client({
-    host: 'db-fleetiq-encrypt.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
+    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
     port: 5432,
     database: 'multi',
     user: 'gmtp',
@@ -2864,7 +2864,7 @@ const getVehicleId = async (vehicles) => {
     return  false ;
   }
   const client = new Client({
-    host: 'db-fleetiq-encrypt.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
+    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
     port: 5432,
     database: 'multi',
     user: 'gmtp',
