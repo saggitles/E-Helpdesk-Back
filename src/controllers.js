@@ -1418,6 +1418,7 @@ exports.getWelcome = async (req, res) => {
 
 const { Client } = require('pg');
 const { Console } = require('console');
+const { PassThrough } = require('stream');
 
 // Gmtpid
 exports.fleetiq = async (req, res) => {
@@ -2770,7 +2771,7 @@ exports.getSites = async (req, res) => {
       WHERE FUVR."USER_CD" = $1
     `;
 
-    console.log(`Executing Query: ${query} with customer ID: ${customerId}`);
+    //console.log(`Executing Query: ${query} with customer ID: ${customerId}`);
     
 
     const client = new Client({
@@ -2785,7 +2786,7 @@ exports.getSites = async (req, res) => {
     const result = await client.query(query, [customerId]);
     await client.end();
 
-    console.log("Fetched Sites:", result.rows);
+    //console.log("Fetched Sites:", result.rows);
     return res.status(200).json(result.rows);
   } catch (err) {
     console.error("Database Query Failed:", err.message);
@@ -2796,69 +2797,62 @@ exports.getSites = async (req, res) => {
 exports.getVehicles = async (req, res) => {
   const { site, customer, gmptCode } = req.query;
 
-  if (!customer) {
-    return res.status(400).json({ error: 'Customer is required' });
+  if (!customer && !gmptCode) {
+    return res.status(400).json({ error: "Customer or GMPT Code is required" });
   }
 
   const client = new Client({
-    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
+    host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
     port: 5432,
-    database: 'multi',
-    user: 'gmtp',
-    password: 'MUVQcHz2DqZGHvZh'
+    database: "multi",
+    user: "gmtp",
+    password: "MUVQcHz2DqZGHvZh",
   });
 
   try {
     await client.connect();
-    let query, params;
-
+    
+    // 🔹 Step 1: Get VEHICLE_CD First (If Searching by GMPT)
+    let vehicleCDs = [];
     if (gmptCode) {
-      // If a GMPT code is provided, filter only that specific vehicle
-      query = `
-        SELECT "VEHICLE_ID"
-        FROM "FMS_VEHICLE_MST"
-        WHERE "VEHICLE_ID" = $1;
-      `;
-      params = [gmptCode];
+      const cdQuery = `SELECT "VEHICLE_CD" FROM "FMS_VEHICLE_MST" WHERE "VEHICLE_ID" = $1;`;
+      const cdResult = await client.query(cdQuery, [gmptCode]);
+      vehicleCDs = cdResult.rows.map(row => row.VEHICLE_CD);
     } else if (site) {
-      query = `
-        SELECT "VEHICLE_ID"
-        FROM "FMS_VEHICLE_MST"
-        WHERE "VEHICLE_CD" IN (
-            SELECT "VEHICLE_CD"
-            FROM "FMS_USR_VEHICLE_REL"
-            WHERE "LOC_CD" = $1
-        );
-      `;
-      params = [site];
+      const siteQuery = `SELECT "VEHICLE_CD" FROM "FMS_USR_VEHICLE_REL" WHERE "LOC_CD" = $1;`;
+      const siteResult = await client.query(siteQuery, [site]);
+      vehicleCDs = siteResult.rows.map(row => row.VEHICLE_CD);
     } else {
-      query = `
-        SELECT "VEHICLE_ID"
-        FROM "FMS_VEHICLE_MST"
-        WHERE "VEHICLE_CD" IN (
-            SELECT "VEHICLE_CD"
-            FROM "FMS_USR_VEHICLE_REL"
-            WHERE "USER_CD" = $1
-        );
-      `;
-      params = [customer];
+      const customerQuery = `SELECT "VEHICLE_CD" FROM "FMS_USR_VEHICLE_REL" WHERE "USER_CD" = $1;`;
+      const customerResult = await client.query(customerQuery, [customer]);
+      vehicleCDs = customerResult.rows.map(row => row.VEHICLE_CD);
     }
 
-    console.log(`Executing Query: ${query} with params:`, params);
-
-    const result = await client.query(query, params);
-
-    await client.end();
-
-    if (result.rows.length === 0) {
+    if (vehicleCDs.length === 0) {
       return res.status(404).json({ error: "No vehicles found" });
     }
 
-    const vehicles = result.rows.map(row => row.VEHICLE_ID);
+    //console.log("Fetched VEHICLE_CD:", vehicleCDs);
 
-    const respuesta = await getVehicleId(vehicles);
+    // 🔹 Step 2: Fetch Basic Vehicle Info
+    const vehicleInfo = await fetchVehicleInfo(client, vehicleCDs);
 
-    return res.status(200).json(respuesta);
+    // 🔹 Step 3: Fetch Additional Data (Master Codes & Blacklisted Drivers)
+    const [masterCodes, blacklistedDrivers] = await Promise.all([
+      fetchMasterCodes(client, vehicleCDs), // ✅ Using VEHICLE_CD now
+      fetchBlacklistedDrivers(client, vehicleCDs) // ✅ Using VEHICLE_CD now
+    ]);
+
+    await client.end();
+
+    // 🔹 Step 4: Merge Additional Data into Vehicle Info
+    const responseData = vehicleInfo.map(vehicle => ({
+      ...vehicle,
+      master_codes: masterCodes[vehicle.VEHICLE_CD] || [],
+      blacklisted_drivers: blacklistedDrivers[vehicle.VEHICLE_CD] || []
+    }));
+
+    return res.status(200).json(responseData);
 
   } catch (err) {
     console.error("Database Query Failed:", err.message);
@@ -2866,109 +2860,105 @@ exports.getVehicles = async (req, res) => {
   }
 };
 
+// ✅ Fetch Basic Vehicle Info
+async function fetchVehicleInfo(client, vehicleCDs) {
+  const query = `
+              SELECT 
+              fvm."VEHICLE_CD",
+              jsonb_build_object(
+                  'vehicleName', ev."hire_no",
+                  'serialNumber', ev."serial_no",
+                  'firmwareVersion', ev."firmware_ver",
+                  'screenVersion', ev."product_type",
+                  'expansionVersion', ev."exp_mod_ver",
+                  'lastConnection', fvm."LAST_EOS",
+                  'department', fdm."DEPT_NAME",
+                  'vorSetting', fvm."vor_setting",
+                  'lockoutCode', fvm."lockout_code",
+                  'impactLockout', fvm."IMPACT_LOCKOUT",
+                  'calibrated', fvm."FSSS_BASE",
+                  'surveyTimeout', fvm."survey_timeout",
+                  'seatIdle', fvm."seat_idle",
+                  'impactRecalibrationDate', ews."impact_recalibration_date",
+                  'preopSchedule', ews."preop_schedule",
+
+                  -- ✅ Newly Added Fields
+                  'simNumber', fvm."CCID",
+                  'vehicleType', fvm."VEHICLE_TYPE_CD",
+                  'vehicleModel', vt."VEHICLE_TYPE",
+
+                  -- ✅ Online/Offline Status based on last card verification time
+                  'status', (
+                      SELECT 
+                          CASE 
+                              WHEN MAX(fcv."TIME_STAMP") < NOW() - INTERVAL '2 hours' THEN 'Offline'
+                              ELSE 'Online'
+                          END
+                      FROM "FMS_CARD_VERIFICATION" fcv
+                      WHERE fcv."VEH_CD" = fvm."VEHICLE_CD"
+                      AND DATE(fcv."TIME_STAMP") = CURRENT_DATE
+                  ),
+
+                  -- ✅ Last Recorded "Active" Status from Card Verification
+                  'activeStatus', (
+                      SELECT "active"
+                      FROM "FMS_CARD_VERIFICATION"
+                      WHERE "VEH_CD" = fvm."VEHICLE_CD"
+                      ORDER BY "TIME_STAMP" DESC
+                      LIMIT 1
+                  )
+              ) AS vehicle_info
+          FROM "equipment_view" ev
+          LEFT JOIN "FMS_VEHICLE_MST" fvm ON ev."gmtp_id" = fvm."VEHICLE_ID"
+          LEFT JOIN "FMS_USR_VEHICLE_REL" fuvr ON fvm."VEHICLE_CD" = fuvr."VEHICLE_CD"
+          LEFT JOIN "FMS_DEPT_MST" fdm ON fuvr."DEPT_CD" = fdm."DEPT_CD"
+          LEFT JOIN "equipment_website_settings" ews ON fvm."VEHICLE_ID" = ews."gmtp_id"
+          LEFT JOIN "FMS_VEHICLE_TYPE_MST" vt ON fvm."VEHICLE_TYPE_CD" = vt."VEHICLE_TYPE_CD"
+          WHERE fvm."VEHICLE_CD" = ANY($1);
 
 
-const getVehicleId = async (vehicles) => {
+  `;
 
-  if (!vehicles || vehicles.length === 0) {
-    return  false ;
-  }
-  const client = new Client({
-    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
-    port: 5432,
-    database: 'multi',
-    user: 'gmtp',
-    password: 'MUVQcHz2DqZGHvZh'
-  });
-  try {
-    await client.connect();
+  const result = await client.query(query, [vehicleCDs]);
+  //console.log('jason coming Through:',result.rows)
 
-    const query = `
-                  SELECT 
-                  fvm."VEHICLE_CD",
-                  
-                  -- Basic Vehicle Information
-                  jsonb_build_object(
-                      'vehicleName', ev."hire_no",
-                      'serialNumber', ev."serial_no",
-                      'firmwareVersion', ev."firmware_ver",
-                      'screenVersion', ev."product_type",
-                      'expansionVersion', ev."exp_mod_ver",
-                      'lastConnection', fvm."LAST_EOS",
-                      'department', fdm."DEPT_NAME",
-                      'vorSetting', fvm."vor_setting",
-                      'lockoutCode', fvm."lockout_code",
-                      'impactLockout', fvm."IMPACT_LOCKOUT",
-                      'calibrated', fvm."FSSS_BASE",
-                      'surveyTimeout', fvm."survey_timeout",
-                      'seatIdle', fvm."seat_idle",
-                      'impactRecalibrationDate', ews."impact_recalibration_date",
-                      'preopSchedule', ews."preop_schedule" -- ✅ Added new field
-                  ) AS vehicle_info,
+  return result.rows;
+}
 
-                  -- Master Codes (Grouped as JSON Array)
-                  COALESCE(jsonb_agg(
-                      DISTINCT jsonb_build_object(
-                          'masterCodeCd', fvo."VEHICLE_CD",
-                          'masterCodeUser', fum."USER_NAME"
-                      )
-                  ) FILTER (WHERE fvo."VEHICLE_CD" IS NOT NULL), '[]') AS master_codes,
+// ✅ Fetch Master Codes using VEHICLE_CD
+async function fetchMasterCodes(client, vehicleCDs) {
+  const query = `
+    SELECT fvo."VEHICLE_CD", jsonb_build_object('masterCodeUser', fum."USER_NAME") AS master_code
+    FROM "FMS_VEHICLE_OVERRIDE" fvo
+    JOIN "FMS_USR_MST" fum ON fvo."USER_CD" = fum."USER_CD"
+    WHERE fvo."VEHICLE_CD" = ANY($1);
+  `;
 
-                  -- Blacklisted Drivers (Grouped as JSON Array)
-                  COALESCE(jsonb_agg(
-                      DISTINCT jsonb_build_object(
-                          'blacklistVehicleCd', fdb."VEHICLE_CD",
-                          'blacklistedDriver', fum_blacklist."USER_NAME"
-                      )
-                  ) FILTER (WHERE fdb."VEHICLE_CD" IS NOT NULL), '[]') AS blacklisted_drivers
+  const result = await client.query(query, [vehicleCDs]);
+  return groupByVehicle(result.rows, "master_code");
+}
 
-              FROM "equipment_view" ev
+// ✅ Fetch Blacklisted Drivers using VEHICLE_CD
+async function fetchBlacklistedDrivers(client, vehicleCDs) {
+  const query = `
+    SELECT fdb."VEHICLE_CD", jsonb_build_object('blacklistedDriver', fum_blacklist."USER_NAME") AS blacklisted_driver
+    FROM "FMS_DRIVER_BLKLST" fdb
+    JOIN "FMS_USR_MST" fum_blacklist ON fdb."USER_CD" = fum_blacklist."USER_CD"
+    WHERE fdb."VEHICLE_CD" = ANY($1);
+  `;
 
-              -- Joins for Vehicle Details
-              LEFT JOIN "FMS_VEHICLE_MST" fvm ON ev."gmtp_id" = fvm."VEHICLE_ID"
-              LEFT JOIN "FMS_USR_VEHICLE_REL" fuvr ON fvm."VEHICLE_CD" = fuvr."VEHICLE_CD"
-              LEFT JOIN "FMS_DEPT_MST" fdm ON fuvr."DEPT_CD" = fdm."DEPT_CD"
+  const result = await client.query(query, [vehicleCDs]);
+  return groupByVehicle(result.rows, "blacklisted_driver");
+}
 
-              -- Join for Vehicle Settings & Preop Schedule
-              LEFT JOIN "equipment_website_settings" ews ON fvm."VEHICLE_ID" = ews."gmtp_id"
-
-              -- Joins for Master Codes
-              LEFT JOIN "FMS_VEHICLE_OVERRIDE" fvo ON fvm."VEHICLE_CD" = fvo."VEHICLE_CD"
-              LEFT JOIN "FMS_USR_MST" fum ON fvo."USER_CD" = fum."USER_CD"
-
-              -- Joins for Blacklisted Drivers
-              LEFT JOIN "FMS_DRIVER_BLKLST" fdb ON fvm."VEHICLE_CD" = fdb."VEHICLE_CD"
-              LEFT JOIN "FMS_USR_MST" fum_blacklist ON fdb."USER_CD" = fum_blacklist."USER_CD"
-
-              WHERE ev."gmtp_id" = ANY($1)
-
-              GROUP BY fvm."VEHICLE_CD", ev."gmtp_id", ev."hire_no", ev."serial_no", ev."firmware_ver", 
-                      ev."product_type", ev."exp_mod_ver", fvm."LAST_EOS", fdm."DEPT_NAME", 
-                      fvm."vor_setting", fvm."lockout_code", fvm."IMPACT_LOCKOUT", 
-                      fvm."FSSS_BASE", fvm."survey_timeout", fvm."seat_idle", 
-                      ews."impact_recalibration_date", ews."preop_schedule"; -- ✅ Added to GROUP BY
-
-    `;
-    
-    console.log(`Executing Query: ${query} with vehicleIds:`, vehicles);
-    
-    const result = await client.query(query, [vehicles]);
-    await client.end();
-    
-    const vehicleInfo = result.rows;
-    console.log("Fetched Vehicle Details:", vehicleInfo);
-
-    if (!Array.isArray(vehicleInfo) || vehicleInfo.length === 0) {
-      console.warn("No vehicle details found for provided IDs.");
-      return false ;
-    }
-
-    return vehicleInfo;
-  } catch (err) {
-    console.error("Database Query Failed:", err.message);
-    return false;
-  }
-};
+// ✅ Utility Function to Group Data by VEHICLE_CD
+function groupByVehicle(rows, field) {
+  return rows.reduce((acc, row) => {
+    if (!acc[row.VEHICLE_CD]) acc[row.VEHICLE_CD] = [];
+    acc[row.VEHICLE_CD].push(row[field]);
+    return acc;
+  }, {});
+}
 
 
 // Filtros... ESTO ES NUEVO
