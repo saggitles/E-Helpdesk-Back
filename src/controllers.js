@@ -2794,7 +2794,7 @@ exports.getSites = async (req, res) => {
 };
 
 exports.getVehicles = async (req, res) => {
-  const { site, customer } = req.query;
+  const { site, customer, gmptCode } = req.query;
 
   if (!customer) {
     return res.status(400).json({ error: 'Customer is required' });
@@ -2811,15 +2811,24 @@ exports.getVehicles = async (req, res) => {
   try {
     await client.connect();
     let query, params;
-    
-    if (site) {
+
+    if (gmptCode) {
+      // If a GMPT code is provided, filter only that specific vehicle
+      query = `
+        SELECT "VEHICLE_ID"
+        FROM "FMS_VEHICLE_MST"
+        WHERE "VEHICLE_ID" = $1;
+      `;
+      params = [gmptCode];
+    } else if (site) {
       query = `
         SELECT "VEHICLE_ID"
         FROM "FMS_VEHICLE_MST"
         WHERE "VEHICLE_CD" IN (
             SELECT "VEHICLE_CD"
             FROM "FMS_USR_VEHICLE_REL"
-            WHERE "LOC_CD" = $1);
+            WHERE "LOC_CD" = $1
+        );
       `;
       params = [site];
     } else {
@@ -2829,14 +2838,14 @@ exports.getVehicles = async (req, res) => {
         WHERE "VEHICLE_CD" IN (
             SELECT "VEHICLE_CD"
             FROM "FMS_USR_VEHICLE_REL"
-            WHERE "USER_CD" = $1);
-
+            WHERE "USER_CD" = $1
+        );
       `;
       params = [customer];
     }
-    
+
     console.log(`Executing Query: ${query} with params:`, params);
-    
+
     const result = await client.query(query, params);
 
     await client.end();
@@ -2849,13 +2858,14 @@ exports.getVehicles = async (req, res) => {
 
     const respuesta = await getVehicleId(vehicles);
 
-    return res.status(200).json(respuesta); // ✅ Only one response
+    return res.status(200).json(respuesta);
 
   } catch (err) {
     console.error("Database Query Failed:", err.message);
     return res.status(500).json({ error: "Database query failed", details: err.message });
   }
 };
+
 
 
 const getVehicleId = async (vehicles) => {
