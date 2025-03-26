@@ -128,7 +128,7 @@ router.post('/fleetiqname/:serialNo/:userName', controllers.fleetiqname);
 
 
 //FleetFocus
-router.get('/fleetiq',controllers.fleetfocus); 
+router.get('/fleetfocus',controllers.fleetfocus); 
 
 //GET ALL DEALERS
 router.get('/dealers',  controllers.getAllDealers);
@@ -158,10 +158,20 @@ router.get('/customers', controllers.getCustomers);
 router.get('/sites', controllers.getSites);
 router.get('/vehicles', controllers.getVehicles);
 
-router.get('/tickets', controllers.getTicketsByLocation); // NUEVO
+router.get('/tickets', controllers.getTicketsByLocation);
 
 
+router.get("/available-dates", controllers.getAvailableDates);
 
+router.get("/available-times", controllers.getAvailableTimes);
+
+router.get("/snapshots", controllers.getVehicleSnapshots);
+
+router.post('/tickets/filterByStatus', controllers.filterTicketsByStatus);
+
+router.get('/ticket/export', controllers.exportAllTickets);
+
+router.get('/gmpt-codes', controllers.getGmptCodesBySite);
 
 
 

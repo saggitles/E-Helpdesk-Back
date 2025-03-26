@@ -2863,64 +2863,59 @@ exports.getVehicles = async (req, res) => {
 // ✅ Fetch Basic Vehicle Info
 async function fetchVehicleInfo(client, vehicleCDs) {
   const query = `
-              SELECT 
-              fvm."VEHICLE_CD",
-              jsonb_build_object(
-                  'vehicleName', ev."hire_no",
-                  'serialNumber', ev."serial_no",
-                  'firmwareVersion', ev."firmware_ver",
-                  'screenVersion', ev."product_type",
-                  'expansionVersion', ev."exp_mod_ver",
-                  'lastConnection', fvm."LAST_EOS",
-                  'department', fdm."DEPT_NAME",
-                  'vorSetting', fvm."vor_setting",
-                  'lockoutCode', fvm."lockout_code",
-                  'impactLockout', fvm."IMPACT_LOCKOUT",
-                  'calibrated', fvm."FSSS_BASE",
-                  'surveyTimeout', fvm."survey_timeout",
-                  'seatIdle', fvm."seat_idle",
-                  'impactRecalibrationDate', ews."impact_recalibration_date",
-                  'preopSchedule', ews."preop_schedule",
-
-                  -- ✅ Newly Added Fields
-                  'simNumber', fvm."CCID",
-                  'vehicleType', fvm."VEHICLE_TYPE_CD",
-                  'vehicleModel', vt."VEHICLE_TYPE",
-
-                  -- ✅ Online/Offline Status based on last card verification time
-                  'status', (
-                      SELECT 
-                          CASE 
-                              WHEN MAX(fcv."TIME_STAMP") < NOW() - INTERVAL '2 hours' THEN 'Offline'
-                              ELSE 'Online'
-                          END
-                      FROM "FMS_CARD_VERIFICATION" fcv
-                      WHERE fcv."VEH_CD" = fvm."VEHICLE_CD"
-                      AND DATE(fcv."TIME_STAMP") = CURRENT_DATE
-                  ),
-
-                  -- ✅ Last Recorded "Active" Status from Card Verification
-                  'activeStatus', (
-                      SELECT "active"
-                      FROM "FMS_CARD_VERIFICATION"
-                      WHERE "VEH_CD" = fvm."VEHICLE_CD"
-                      ORDER BY "TIME_STAMP" DESC
-                      LIMIT 1
-                  )
-              ) AS vehicle_info
-          FROM "equipment_view" ev
-          LEFT JOIN "FMS_VEHICLE_MST" fvm ON ev."gmtp_id" = fvm."VEHICLE_ID"
-          LEFT JOIN "FMS_USR_VEHICLE_REL" fuvr ON fvm."VEHICLE_CD" = fuvr."VEHICLE_CD"
-          LEFT JOIN "FMS_DEPT_MST" fdm ON fuvr."DEPT_CD" = fdm."DEPT_CD"
-          LEFT JOIN "equipment_website_settings" ews ON fvm."VEHICLE_ID" = ews."gmtp_id"
-          LEFT JOIN "FMS_VEHICLE_TYPE_MST" vt ON fvm."VEHICLE_TYPE_CD" = vt."VEHICLE_TYPE_CD"
-          WHERE fvm."VEHICLE_CD" = ANY($1);
-
+            SELECT 
+            fvm."VEHICLE_CD",
+            jsonb_build_object(
+                'vehicleName', ev."hire_no",
+                'serialNumber', ev."serial_no",
+                'gmptCode', fvm."VEHICLE_ID",
+                'firmwareVersion', ev."firmware_ver",
+                'screenVersion', ev."product_type",
+                'expansionVersion', ev."exp_mod_ver",
+                'lastConnection', COALESCE(TO_CHAR(fvm."LAST_EOS", 'DD/MM/YYYY HH24:MI'), 'N/A'),
+                'department', fdm."DEPT_NAME",
+                'vorSetting', fvm."vor_setting",
+                'lockoutCode', fvm."lockout_code",
+                'impactLockout', fvm."IMPACT_LOCKOUT",
+                'surveyTimeout', fvm."survey_timeout",
+                'seatIdle', fvm."seat_idle",
+                'redImpactThreshold', ROUND(CAST(0.00388 * SQRT(COALESCE(fvm."FSSS_BASE", 0) * COALESCE(fvm."FSSSMULTI", 0) * 10) AS NUMERIC), 3),
+                'impactRecalibrationDate', COALESCE(TO_CHAR(ews."impact_recalibration_date", 'DD/MM/YYYY HH24:MI'), 'N/A'),
+                'preopSchedule', ews."preop_schedule",
+                'simNumber', fvm."CCID",
+                'vehicleType', fvm."VEHICLE_TYPE_CD",
+                'vehicleModel', vt."VEHICLE_TYPE",
+                'status', COALESCE(( 
+                    SELECT CASE 
+                        WHEN MAX(fcv."TIME_STAMP") < NOW() - INTERVAL '2 hours' THEN 'Offline'
+                        ELSE 'Online'
+                    END
+                    FROM "FMS_CARD_VERIFICATION" fcv
+                    WHERE fcv."VEH_CD" = fvm."VEHICLE_CD"
+                    AND DATE(fcv."TIME_STAMP") = CURRENT_DATE
+                ), 'Unknown'),
+                'fullLockoutEnabled', fvm."full_lockout_enabled",
+                'fullLockoutTimeout', fvm."full_lockout_timeout",
+                -- Added Customer and Site Names:
+                'customerName', cust."USER_NAME",
+                'siteName', loc."NAME"
+            ) AS vehicle_info
+        FROM "equipment_view" ev
+        LEFT JOIN "FMS_VEHICLE_MST" fvm ON ev."gmtp_id" = fvm."VEHICLE_ID"
+        LEFT JOIN "FMS_USR_VEHICLE_REL" fuvr ON fvm."VEHICLE_CD" = fuvr."VEHICLE_CD"
+        LEFT JOIN "FMS_DEPT_MST" fdm ON fuvr."DEPT_CD" = fdm."DEPT_CD"
+        -- If the customer key in FMS_USR_VEHICLE_REL is not USER_CD, adjust the column name below.
+        LEFT JOIN "FMS_CUST_MST" cust ON fuvr."USER_CD" = cust."USER_CD"
+        -- If the site key in FMS_USR_VEHICLE_REL is different, adjust the column name below.
+        LEFT JOIN "FMS_LOC_MST" loc ON fuvr."LOC_CD" = loc."LOCATION_CD"
+        LEFT JOIN "equipment_website_settings" ews ON fvm."VEHICLE_ID" = ews."gmtp_id"
+        LEFT JOIN "FMS_VEHICLE_TYPE_MST" vt ON fvm."VEHICLE_TYPE_CD" = vt."VEHICLE_TYPE_CD"
+        WHERE fvm."VEHICLE_CD" = ANY($1);
 
   `;
 
   const result = await client.query(query, [vehicleCDs]);
-  //console.log('jason coming Through:',result.rows)
+  console.log('Fetching new vehicles...',result.rows)
 
   return result.rows;
 }
@@ -2961,8 +2956,6 @@ function groupByVehicle(rows, field) {
 }
 
 
-// Filtros... ESTO ES NUEVO
-
 exports.getTicketsByLocation = async (req, res) => {
   try {
       const { locationCD } = req.query;  // Obtener el parámetro desde la URL
@@ -2999,6 +2992,267 @@ exports.getTicketsByLocation = async (req, res) => {
       res.status(500).json({ message: 'Internal server error fetching tickets by location' });
   }
 };
+
+
+const dbConfig = {
+  host: '192.168.1.193',
+  user: 'postgres',
+  password: 'admin',
+  database: 'E-helpdesk',
+  port: 5432,
+};
+
+exports.getAvailableDates = async (req, res) => {
+  const client = new Client(dbConfig);
+
+  try {
+    await client.connect();
+
+    const query = `
+    SELECT DISTINCT query_execution_date AS date
+    FROM "vehicle_info"
+    ORDER BY date DESC;
+  `;
+
+    const result = await client.query(query);
+    const dates = result.rows.map((row) => row.date);
+
+    res.json(dates);
+  } catch (error) {
+    console.error('Error fetching available dates:', error.message);
+    res.status(500).json({ error: 'Failed to fetch available dates' });
+  } finally {
+    await client.end();
+  }
+};
+
+
+
+
+
+
+exports.getAvailableTimes = async (req, res) => {
+  const { date } = req.query;
+  const client = new Client(dbConfig);
+
+  try {
+    await client.connect();
+
+    const query = `
+      SELECT MIN(snapshot_id) AS id, TO_CHAR(query_execution_date, 'HH24:MI') AS time
+      FROM vehicle_info
+      WHERE DATE(query_execution_date) = $1
+      GROUP BY TO_CHAR(query_execution_date, 'HH24:MI')
+      ORDER BY time ASC;
+    `;
+
+    const result = await client.query(query, [date]);
+    const times = result.rows.map(row => ({
+      ID: row.id,
+      time: row.time,
+    }));
+
+    res.json(times);
+  } catch (error) {
+    console.error('Error fetching times:', error.message);
+    res.status(500).json({ error: 'Failed to fetch times' });
+  } finally {
+    await client.end();
+  }
+};
+
+
+
+
+exports.getVehicleSnapshots = async (req, res) => {
+  console.log('📦 Snapshot route hit!');
+  // Get snapshot time filters
+  const time1 = req.query.time1 || req.query.TIME1;
+  const time2 = req.query.time2 || req.query.TIME2;
+  // Get vehicle filters: customer (USER_CD) is required; site (LOC_CD) and gmptCode are optional
+  const customer = req.query.customer;
+  const site = req.query.site; // optional
+  const gmptCode = req.query.gmptCode; // optional
+
+  if (!time1 || !time2 || !customer) {
+    return res.status(400).json({ error: 'Missing required snapshot times or customer filter' });
+  }
+
+  const client = new Client(dbConfig);
+  try {
+    await client.connect();
+
+    // Build extra conditions based on customer and site.
+    // Note: We assume the table has columns "cust_id" and "site_id".
+    let extraConditions = ` AND "cust_id" = $3`;
+    let queryParams = [time1, time2, customer];
+    
+    if (site) {
+      extraConditions += ` AND "site_id" = $4`;
+      queryParams.push(site);
+    }
+    
+    // Optionally add gmptCode filter if provided.
+    if (gmptCode) {
+      extraConditions += ` AND "gmptCode" = $${queryParams.length + 1}`;
+      queryParams.push(gmptCode);
+    }
+
+    // Query snapshots within the given time range (start time plus 58 minutes)
+    const query = `
+      SELECT *,
+        TO_CHAR(query_execution_date, 'HH24:MI') AS snapshot_time
+      FROM "vehicle_info"
+      WHERE (
+             query_execution_date::time BETWEEN $1 AND ($1::time + interval '58 minutes')
+             OR query_execution_date::time BETWEEN $2 AND ($2::time + interval '58 minutes')
+            )
+            ${extraConditions}
+    `;
+
+    const result = await client.query(query, queryParams);
+    console.log('Query result rows:', result.rows);
+
+    // Group snapshots based on which time range they fall into
+    const grouped = {
+      [time1]: [],
+      [time2]: [],
+    };
+
+    result.rows.forEach((row) => {
+      const snapTime = row.snapshot_time; // formatted as 'HH24:MI'
+      if (snapTime >= time1 && snapTime <= addMinutes(time1, 58)) {
+        grouped[time1].push(row);
+      } else if (snapTime >= time2 && snapTime <= addMinutes(time2, 58)) {
+        grouped[time2].push(row);
+      }
+    });
+
+    console.log('Grouped snapshots:', grouped);
+    res.json(grouped);
+  } catch (error) {
+    console.error('Error fetching snapshots:', error.message);
+    res.status(500).json({ error: 'Internal server error fetching snapshots' });
+  } finally {
+    await client.end();
+  }
+};
+
+// Utility function to add minutes to a time string (HH:MM)
+function addMinutes(timeStr, minutesToAdd) {
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  const totalMinutes = hours * 60 + minutes + minutesToAdd;
+  const newHours = Math.floor(totalMinutes / 60) % 24;
+  const newMinutes = totalMinutes % 60;
+  return `${newHours.toString().padStart(2, '0')}:${newMinutes.toString().padStart(2, '0')}`;
+}
+
+
+
+
+
+exports.filterTicketsByStatus = async (req, res) => {
+  const { statuses } = req.body;
+
+  if (!Array.isArray(statuses) || statuses.length === 0) {
+    return res.status(400).json({ error: 'Invalid or missing status list' });
+  }
+
+  try {
+    const tickets = await prisma.ticket.findMany({
+      where: {
+        Status: {
+          in: statuses
+        }
+      },
+      orderBy: {
+        IDTicket: 'desc'
+      },
+      include: {
+        Customer: {
+          select: {
+            CustomerName: true
+          }
+        },
+        AssignedUser: {
+          select: {
+            Username: true
+          }
+        }
+      }
+    });
+
+    // Format output to match the structure used in `getTickets`
+    const formatted = tickets.map(ticket => ({
+      ...ticket,
+      Customer: ticket.Customer?.CustomerName || null,
+      User: ticket.AssignedUser?.Username || null
+    }));
+
+    res.status(200).json(formatted);
+  } catch (error) {
+    console.error('Error filtering tickets by status:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+
+exports.exportAllTickets = async (req, res) => {
+  try {
+    const tickets = await prisma.ticket.findMany();
+
+    if (!tickets || tickets.length === 0) {
+      return res.status(404).json({ message: 'No tickets found.' });
+    }
+
+    // Convert to CSV format
+    const fields = Object.keys(tickets[0]);
+    const csv = [
+      fields.join(','), // headers
+      ...tickets.map(ticket => fields.map(f => `"${ticket[f]}"`).join(',')) // rows
+    ].join('\n');
+
+    res.setHeader('Content-Disposition', 'attachment; filename=tickets.csv');
+    res.setHeader('Content-Type', 'text/csv');
+    res.status(200).send(csv);
+  } catch (error) {
+    console.error('Error exporting tickets:', error.message);
+    res.status(500).json({ error: 'Failed to export tickets.' });
+  }
+};
+
+
+// In controllers.js
+exports.getGmptCodesBySite = async (req, res) => {
+  const { locationCD } = req.query;
+
+  if (!locationCD) {
+    return res.status(400).json({ error: 'Missing locationCD' });
+  }
+
+  const client = new Client(dbConfig);
+  await client.connect();
+
+  try {
+    const query = `
+      SELECT fvm."VEHICLE_ID" as gmptCode
+      FROM "FMS_VEHICLE_MST" fvm
+      WHERE fvm."LOCATION_CD" = $1
+    `;
+    const result = await client.query(query, [locationCD]);
+    const codes = result.rows.map(row => row.gmptcode); // Make sure column name is lowercase
+    res.json(codes);
+  } catch (err) {
+    console.error('Error fetching GMPT codes:', err.message);
+    res.status(500).json({ error: 'Internal error fetching GMPT codes' });
+  } finally {
+    await client.end();
+  }
+};
+
+
+
+
 
 exports.requireReadCustomerPermission = requirePermission('read:customer');
 exports.requireReadTicketPermission = requirePermission('read:ticket');
