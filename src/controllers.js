@@ -3069,7 +3069,7 @@ exports.getVehicleSnapshots = async (req, res) => {
   // Get snapshot time filters
   const time1 = req.query.time1 || req.query.TIME1;
   const time2 = req.query.time2 || req.query.TIME2;
-  // Get vehicle filters: customer (USER_CD) is required; site (LOC_CD) and gmptCode are optional
+  // Get vehicle filters
   const customer = req.query.customer;
   const site = req.query.site; // optional
   const gmptCode = req.query.gmptCode; // optional
@@ -3082,54 +3082,54 @@ exports.getVehicleSnapshots = async (req, res) => {
   try {
     await client.connect();
 
-    // Build extra conditions based on customer and site.
-    // Note: We assume the table has columns "cust_id" and "site_id".
+    // Build extra conditions. We assume your table has "cust_id" and "site_id" columns.
     let extraConditions = ` AND "cust_id" = $3`;
     let queryParams = [time1, time2, customer];
-    
     if (site) {
       extraConditions += ` AND "site_id" = $4`;
       queryParams.push(site);
     }
-    
-    // Optionally add gmptCode filter if provided.
     if (gmptCode) {
       extraConditions += ` AND "gmptCode" = $${queryParams.length + 1}`;
       queryParams.push(gmptCode);
     }
 
-    // Query snapshots within the given time range (start time plus 58 minutes)
+    // Query snapshots within the time ranges (each time range is start time plus 58 minutes)
     const query = `
-      SELECT *,
-        TO_CHAR(query_execution_date, 'HH24:MI') AS snapshot_time
-      FROM "vehicle_info"
-      WHERE (
-             query_execution_date::time BETWEEN $1 AND ($1::time + interval '58 minutes')
-             OR query_execution_date::time BETWEEN $2 AND ($2::time + interval '58 minutes')
-            )
-            ${extraConditions}
-    `;
+      SELECT DISTINCT ON (vehicle_cd, snapshot_time) *
+      FROM (
+        SELECT *,
+              TO_CHAR(query_execution_date, 'HH24:MI') AS snapshot_time
+        FROM "vehicle_info"
+        WHERE TO_CHAR(query_execution_date, 'HH24:MI') IN ($1, $2)
+              ${extraConditions}
+      ) AS sub
+      ORDER BY vehicle_cd, snapshot_time, query_execution_date;
 
+    `;
     const result = await client.query(query, queryParams);
     console.log('Query result rows:', result.rows);
 
-    // Group snapshots based on which time range they fall into
-    const grouped = {
-      [time1]: [],
-      [time2]: [],
-    };
-
-    result.rows.forEach((row) => {
-      const snapTime = row.snapshot_time; // formatted as 'HH24:MI'
-      if (snapTime >= time1 && snapTime <= addMinutes(time1, 58)) {
-        grouped[time1].push(row);
-      } else if (snapTime >= time2 && snapTime <= addMinutes(time2, 58)) {
-        grouped[time2].push(row);
+    // Now, group (or pair) the snapshots by vehicle_cd.
+    // Here we create an object where each key is a vehicle_cd.
+    // For each vehicle, we create two arrays: one for snapshots falling in the time1 range ("before")
+    // and one for snapshots falling in the time2 range ("after").
+    const pairedSnapshots = result.rows.reduce((acc, row) => {
+      const vCode = row.vehicle_cd; // assuming this column holds the vehicle identifier
+      if (!acc[vCode]) {
+        acc[vCode] = { before: [], after: [] };
       }
-    });
+      // Determine if this row belongs to time1 or time2 group
+      if (row.snapshot_time >= time1 && row.snapshot_time <= addMinutes(time1, 58)) {
+        acc[vCode].before.push(row);
+      } else if (row.snapshot_time >= time2 && row.snapshot_time <= addMinutes(time2, 58)) {
+        acc[vCode].after.push(row);
+      }
+      return acc;
+    }, {});
 
-    console.log('Grouped snapshots:', grouped);
-    res.json(grouped);
+    console.log('Paired snapshots by vehicle_cd:', pairedSnapshots);
+    res.json(pairedSnapshots);
   } catch (error) {
     console.error('Error fetching snapshots:', error.message);
     res.status(500).json({ error: 'Internal server error fetching snapshots' });
@@ -3137,6 +3137,16 @@ exports.getVehicleSnapshots = async (req, res) => {
     await client.end();
   }
 };
+
+// Utility function to add minutes to a time string (HH:MM)
+function addMinutes(timeStr, minutesToAdd) {
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  const totalMinutes = hours * 60 + minutes + minutesToAdd;
+  const newHours = Math.floor(totalMinutes / 60) % 24;
+  const newMinutes = totalMinutes % 60;
+  return `${newHours.toString().padStart(2, '0')}:${newMinutes.toString().padStart(2, '0')}`;
+}
+
 
 // Utility function to add minutes to a time string (HH:MM)
 function addMinutes(timeStr, minutesToAdd) {
