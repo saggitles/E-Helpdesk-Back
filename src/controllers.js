@@ -3067,8 +3067,11 @@ exports.getAvailableTimes = async (req, res) => {
 exports.getVehicleSnapshots = async (req, res) => {
   console.log('📦 Snapshot route hit!');
   // Get snapshot time filters
+  const { format } = require('date-fns');
   const time1 = req.query.time1 || req.query.TIME1;
   const time2 = req.query.time2 || req.query.TIME2;
+  const date1 = req.query.date1 || req.query.Date1;
+  const date2 = req.query.date2 || req.query.Date2;
   // Get vehicle filters
   const customer = req.query.customer;
   const site = req.query.site; // optional
@@ -3078,21 +3081,37 @@ exports.getVehicleSnapshots = async (req, res) => {
     return res.status(400).json({ error: 'Missing required snapshot times or customer filter' });
   }
 
+  // Convert date objects to the expected string format.
+  // If date1 and date2 are Date objects, format them; if they're strings, you may need to parse them first.
+  const formattedDate1 = format(new Date(date1), 'yyyy-MM-dd');
+  const formattedDate2 = format(new Date(date2), 'yyyy-MM-dd');
+
   const client = new Client(dbConfig);
   try {
     await client.connect();
 
-    // Build extra conditions. We assume your table has "cust_id" and "site_id" columns.
-    let extraConditions = ` AND "cust_id" = $3`;
-    let queryParams = [time1, time2, customer];
+    const customerInt = parseInt(customer);
+    const queryParams = [formattedDate1, formattedDate2, time1, time2, customerInt];
+    // Build extra conditions
+    let extraConditions = ` AND "cust_id" = $5`;
     if (site) {
-      extraConditions += ` AND "site_id" = $4`;
-      queryParams.push(site);
+      const siteInt = parseInt(site);
+      extraConditions += ` AND "site_id" = $6`;
+      queryParams.push(siteInt);
     }
     if (gmptCode) {
       extraConditions += ` AND "gmptCode" = $${queryParams.length + 1}`;
       queryParams.push(gmptCode);
     }
+    
+    console.log('costumer',customer)
+    console.log('site',site)
+    console.log('gmptCode',gmptCode)
+    console.log('date1',date1)
+    console.log('time1',time1)
+    console.log('date2',date2)
+    console.log('time2',time2)
+    
 
     // Query snapshots within the time ranges (each time range is start time plus 58 minutes)
     const query = `
@@ -3101,28 +3120,31 @@ exports.getVehicleSnapshots = async (req, res) => {
         SELECT *,
               TO_CHAR(query_execution_date, 'HH24:MI') AS snapshot_time
         FROM "vehicle_info"
-        WHERE TO_CHAR(query_execution_date, 'HH24:MI') IN ($1, $2)
+        WHERE (
+              (TO_CHAR(query_execution_date, 'YYYY-MM-DD') = $1 
+                AND TO_CHAR(query_execution_date, 'HH24:MI') = $3)
+              OR
+              (TO_CHAR(query_execution_date, 'YYYY-MM-DD') = $2 
+                AND TO_CHAR(query_execution_date, 'HH24:MI') = $4)
+              )
               ${extraConditions}
       ) AS sub
       ORDER BY vehicle_cd, snapshot_time, query_execution_date;
+
+
 
     `;
     const result = await client.query(query, queryParams);
     console.log('Query result rows:', result.rows);
 
-    // Now, group (or pair) the snapshots by vehicle_cd.
-    // Here we create an object where each key is a vehicle_cd.
-    // For each vehicle, we create two arrays: one for snapshots falling in the time1 range ("before")
-    // and one for snapshots falling in the time2 range ("after").
     const pairedSnapshots = result.rows.reduce((acc, row) => {
-      const vCode = row.vehicle_cd; // assuming this column holds the vehicle identifier
+      const vCode = row.vehicle_cd;
       if (!acc[vCode]) {
         acc[vCode] = { before: [], after: [] };
       }
-      // Determine if this row belongs to time1 or time2 group
-      if (row.snapshot_time >= time1 && row.snapshot_time <= addMinutes(time1, 58)) {
+      if (row.snapshot_time === time1) {
         acc[vCode].before.push(row);
-      } else if (row.snapshot_time >= time2 && row.snapshot_time <= addMinutes(time2, 58)) {
+      } else if (row.snapshot_time === time2) {
         acc[vCode].after.push(row);
       }
       return acc;
