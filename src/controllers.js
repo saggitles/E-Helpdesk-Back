@@ -2995,7 +2995,7 @@ exports.getTicketsByLocation = async (req, res) => {
 
 
 const dbConfig = {
-  host: '192.168.1.193',
+  host: '192.168.0.100',
   user: 'postgres',
   password: 'admin',
   database: 'E-helpdesk',
@@ -3140,12 +3140,14 @@ exports.getVehicleSnapshots = async (req, res) => {
     const pairedSnapshots = result.rows.reduce((acc, row) => {
       const vCode = row.vehicle_cd;
       if (!acc[vCode]) {
-        acc[vCode] = { before: [], after: [] };
+        acc[vCode] = { before: {}, after: {} };
       }
       if (row.snapshot_time === time1) {
-        acc[vCode].before.push(row);
+        acc[vCode].before = row;
       } else if (row.snapshot_time === time2) {
-        acc[vCode].after.push(row);
+        row.serialNumber= 'esto es nuevo'
+        acc[vCode].after = row;
+
       }
       return acc;
     }, {});
