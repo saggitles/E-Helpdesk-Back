@@ -3145,7 +3145,6 @@ exports.getVehicleSnapshots = async (req, res) => {
       if (row.snapshot_time === time1) {
         acc[vCode].before = row;
       } else if (row.snapshot_time === time2) {
-        row.serialNumber= 'esto es nuevo'
         acc[vCode].after = row;
 
       }
