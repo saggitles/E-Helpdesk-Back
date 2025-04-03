@@ -167,12 +167,14 @@ router.get("/available-times", controllers.getAvailableTimes);
 
 router.get("/snapshots", controllers.getVehicleSnapshots);
 
-router.post('/tickets/filterByStatus', controllers.filterTicketsByStatus);
-
-router.get('/ticket/export', controllers.exportAllTickets);
-
+router.get('/tickets/export', (req, res, next) => {
+    console.log('Authorization Header:', req.headers.authorization);
+    console.log('Route hit: /tickets/export');
+    next();
+  }, controllers.exportAllTickets);
+  
 router.get('/gmpt-codes', controllers.getGmptCodesBySite);
 
-
+router.get('/tickets/filterByStatus', controllers.getTicketsByStatus);
 
 module.exports = router;

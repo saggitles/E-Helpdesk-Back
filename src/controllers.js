@@ -175,6 +175,7 @@ exports.getAssignedUserForTicket = async (req, res) => {
 
 exports.createTicket = async (req, res) => {
   const newTicket = req.body;
+  console.log('Creating ticket:', newTicket);
   const createdTicket = await prisma.ticket.create({ data: newTicket });
   res.status(201).json(createdTicket);
 };
@@ -3183,77 +3184,63 @@ function addMinutes(timeStr, minutesToAdd) {
 
 
 
-
-exports.filterTicketsByStatus = async (req, res) => {
-  const { statuses } = req.body;
-
-  if (!Array.isArray(statuses) || statuses.length === 0) {
-    return res.status(400).json({ error: 'Invalid or missing status list' });
-  }
-
+exports.exportAllTickets = async (req, res) => {
+  console.log('Exporting all tickets...');
   try {
     const tickets = await prisma.ticket.findMany({
-      where: {
-        Status: {
-          in: statuses
-        }
-      },
       orderBy: {
-        IDTicket: 'desc'
+        IDTicket: 'desc',
       },
-      include: {
-        Customer: {
-          select: {
-            CustomerName: true
-          }
-        },
-        AssignedUser: {
-          select: {
-            Username: true
-          }
-        }
-      }
     });
-
-    // Format output to match the structure used in `getTickets`
-    const formatted = tickets.map(ticket => ({
-      ...ticket,
-      Customer: ticket.Customer?.CustomerName || null,
-      User: ticket.AssignedUser?.Username || null
-    }));
-
-    res.status(200).json(formatted);
-  } catch (error) {
-    console.error('Error filtering tickets by status:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-};
-
-
-exports.exportAllTickets = async (req, res) => {
-  try {
-    const tickets = await prisma.ticket.findMany();
 
     if (!tickets || tickets.length === 0) {
       return res.status(404).json({ message: 'No tickets found.' });
     }
 
-    // Convert to CSV format
-    const fields = Object.keys(tickets[0]);
-    const csv = [
-      fields.join(','), // headers
-      ...tickets.map(ticket => fields.map(f => `"${ticket[f]}"`).join(',')) // rows
-    ].join('\n');
+    const { parse } = require('json2csv');
+    const csv = parse(tickets);
 
-    res.setHeader('Content-Disposition', 'attachment; filename=tickets.csv');
     res.setHeader('Content-Type', 'text/csv');
-    res.status(200).send(csv);
+    res.setHeader('Content-Disposition', 'attachment; filename=tickets.csv');
+    return res.status(200).send(csv);
   } catch (error) {
     console.error('Error exporting tickets:', error.message);
-    res.status(500).json({ error: 'Failed to export tickets.' });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 };
 
+exports.getTicketsByStatus = async (req, res) => {
+  try {
+    // Get the status or statuses from query parameters
+    const { status } = req.query;
+
+    // Check if status is provided
+    if (!status) {
+      return res.status(400).json({ error: 'Status query parameter is required.' });
+    }
+
+    // If multiple statuses are provided, split them into an array
+    const statuses = status.split(',');
+
+    // Fetch tickets filtered by the provided statuses
+    const tickets = await prisma.ticket.findMany({
+      where: {
+        status: {
+          in: statuses, // Filter tickets where status matches any of the provided statuses
+        },
+      },
+    });
+
+    if (!tickets || tickets.length === 0) {
+      return res.status(404).json({ message: 'No tickets found for the given status(es).' });
+    }
+
+    res.status(200).json(tickets);
+  } catch (error) {
+    console.error('Error filtering tickets by status:', error.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
 
 // In controllers.js
 exports.getGmptCodesBySite = async (req, res) => {
