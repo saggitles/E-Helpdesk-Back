@@ -172,7 +172,12 @@ router.get('/tickets/export', (req, res, next) => {
     next();
   }, controllers.exportAllTickets);
   
-router.get('/gmpt-codes', controllers.getGmptCodesBySite);
+router.get('/gmpt-codes', (req, res, next) => {
+  console.log("Solicitud recibida en /gmpt-codes");
+  next();
+}, controllers.getGmptCodesBySite);
+
+
 
 router.get('/tickets/filterByStatus', controllers.getTicketsByStatus);
 

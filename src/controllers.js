@@ -1732,7 +1732,7 @@ exports.fleetiqserial = async (req, res) => {
     // Consulta: Obtener USER_CD basado en userName
     const userQuery = `
       SELECT "USER_CD" 
-      FROM "public"."FMS_CUST_MST" 
+      FROM "FMS_CUST_MST" 
       WHERE "USER_NAME" = $1
     `;
     const userResult = await client.query(userQuery, [userName]);
@@ -3273,17 +3273,27 @@ exports.getGmptCodesBySite = async (req, res) => {
     return res.status(400).json({ error: 'Missing locationCD' });
   }
 
-  const client = new Client(dbConfig);
-  await client.connect();
-
+  const fleetiq = new Client({
+    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
+    port: 5432,
+    database: 'multi',
+    user: 'gmtp',
+    password: 'MUVQcHz2DqZGHvZh'
+  })
+  const client = new Client(fleetiq);
   try {
+    await client.connect();
+
+    console.log("Conexión a la base de datos establecida");
+    
     const query = `
-      SELECT fvm."VEHICLE_ID" as gmptCode
-      FROM "FMS_VEHICLE_MST" fvm
-      WHERE fvm."LOCATION_CD" = $1
+      SELECT "V"."VEHICLE_ID"
+      FROM "FMS_VEHICLE_MST" "V"
+      JOIN "FMS_USR_VEHICLE_REL" "R" ON "V"."VEHICLE_CD" = "R"."VEHICLE_CD"
+      WHERE "R"."LOC_CD" = $1;
     `;
     const result = await client.query(query, [locationCD]);
-    const codes = result.rows.map(row => row.gmptcode); // Make sure column name is lowercase
+    const codes = result.rows.map(row => row.VEHICLE_ID); // Make sure column name is lowercase
     res.json(codes);
   } catch (err) {
     console.error('Error fetching GMPT codes:', err.message);
@@ -3291,6 +3301,7 @@ exports.getGmptCodesBySite = async (req, res) => {
   } finally {
     await client.end();
   }
+  console.log("Solicitud recibida en /gmpt-codes con locationCD:", req.query.locationCD);
 };
 
 
