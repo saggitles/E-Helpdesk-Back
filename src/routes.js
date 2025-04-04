@@ -158,8 +158,7 @@ router.get('/customers', controllers.getCustomers);
 router.get('/sites', controllers.getSites);
 router.get('/vehicles', controllers.getVehicles);
 
-router.get('/tickets', controllers.getTicketsByLocation);
-
+router.get('/ticket/site', controllers.getTicketsByLocation);
 
 router.get("/available-dates", controllers.getAvailableDates);
 

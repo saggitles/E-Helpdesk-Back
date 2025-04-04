@@ -86,23 +86,26 @@ model Ticket {
   Title          String?
   IDTicket       Int         @id @default(autoincrement())
   Department     String?
-  Site           String?
+  SiteName       String?
+  LocationCD     Int?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   Category       String
   incidentDate   DateTime?
   VehicleID      String?
   driversName    String?
-  CustomerID     Int?  
+  customer_id     Int?
+  CustomerID     Int? 
   Dealer         String?
   Contact        String?
   Solution       String?
+  phone          String?
   Supported      String?
   Platform       String?
   isEscalated    String?
   Email          String?
   Reporter       String?
-  Companyname    String?
+  CustomerName   String?
   JiraTicketID   Int?
   TicketNumber   String?
   Comments       Comment[]
@@ -135,7 +138,7 @@ model GuestTicket {
   yourEmail          String
   vehicleIdOrDriverName String
   reportedBy         String
-  companyName        String
+  customerName        String
   issue              String
   issueTime          DateTime
   createdAt          DateTime @default(now())

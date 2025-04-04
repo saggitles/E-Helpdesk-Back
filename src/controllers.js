@@ -174,10 +174,31 @@ exports.getAssignedUserForTicket = async (req, res) => {
 };
 
 exports.createTicket = async (req, res) => {
-  const newTicket = req.body;
-  console.log('Creating ticket:', newTicket);
-  const createdTicket = await prisma.ticket.create({ data: newTicket });
-  res.status(201).json(createdTicket);
+  try {
+    let newTicket = req.body;
+
+    // Parse the `ticket` field if it is a stringified JSON
+    if (typeof newTicket.ticket === 'string') {
+      newTicket = JSON.parse(newTicket.ticket);
+    }
+
+    console.log('Creating ticket:', newTicket);
+
+    // Convert `incidentDate` to ISO-8601 format if it exists
+    if (newTicket.incidentDate) {
+      newTicket.incidentDate = new Date(newTicket.incidentDate).toISOString();
+    }
+
+    // Pass the parsed and formatted data to Prisma
+    const createdTicket = await prisma.ticket.create({
+      data: newTicket,
+    });
+
+    res.status(201).json(createdTicket);
+  } catch (error) {
+    console.error('Error creating ticket:', error.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 };
 
 
@@ -2958,6 +2979,8 @@ function groupByVehicle(rows, field) {
 
 
 exports.getTicketsByLocation = async (req, res) => {
+  console.log('Fetching tickets by location...'); // Log para verificar que la función se está llamando
+  console.log('Received query parameters:', req.query); // Log the received query parameters
   try {
       const { locationCD } = req.query;  // Obtener el parámetro desde la URL
 
