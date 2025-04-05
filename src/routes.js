@@ -1,9 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const controllers = require('./controllers');
+const ticketControllers = require('./Tickets/controllers/')
 const { auth } = require('express-oauth2-jwt-bearer');
 
 
+// Version api 2
+
+// api/v2/
+
+router.post('/v2/tickets', ticketControllers.createTicket);
 
 // GUEST
 router.post('/createGuestTicket', controllers.createGuestTicket); 

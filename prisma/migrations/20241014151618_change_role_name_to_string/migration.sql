@@ -1,3 +1,0 @@
--- AlterTable
-ALTER TABLE "UserRole" ALTER COLUMN "RoleName" SET NOT NULL,
-ALTER COLUMN "RoleName" SET DATA TYPE TEXT;

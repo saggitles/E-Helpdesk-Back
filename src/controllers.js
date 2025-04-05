@@ -131,7 +131,7 @@ exports.getTicket = async (req, res) => {
     const id = parseInt(req.params.id);
     const ticket = await prisma.ticket.findUnique({
       where: {
-        IDTicket: id,
+        id:id,
       },
     });
     if (ticket) {
@@ -175,6 +175,9 @@ exports.getAssignedUserForTicket = async (req, res) => {
 
 exports.createTicket = async (req, res) => {
   try {
+    console.log('creating ticket', req.body)
+    
+    
     let newTicket = req.body;
 
     // Parse the `ticket` field if it is a stringified JSON
@@ -182,23 +185,26 @@ exports.createTicket = async (req, res) => {
       newTicket = JSON.parse(newTicket.ticket);
     }
 
-    console.log('Creating ticket:', newTicket);
+    
 
     // Convert `incidentDate` to ISO-8601 format if it exists
     if (newTicket.incidentDate) {
       newTicket.incidentDate = new Date(newTicket.incidentDate).toISOString();
     }
 
+    console.log('Creating ticket:', newTicket);
     // Pass the parsed and formatted data to Prisma
     const createdTicket = await prisma.ticket.create({
       data: newTicket,
     });
 
     res.status(201).json(createdTicket);
+    
   } catch (error) {
     console.error('Error creating ticket:', error.message);
     res.status(500).json({ error: 'Internal server error' });
   }
+  
 };
 
 

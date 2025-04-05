@@ -32,7 +32,10 @@ app.options('*', cors());
 
 app.use(express.json());
 
-app.use('/api', routes); 
+app.use('/api', routes);
+
+
+// routes para tickets
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {

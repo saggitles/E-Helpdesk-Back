@@ -8,9 +8,9 @@ datasource db {
 }
 
 model User {
+  id             Int        @id @default(autoincrement())
   Username       String?
   Email          String
-  IDUser         Int        @id @default(autoincrement())
   FirstName      String?
   LastName       String?
   UserRoleID     Int?
@@ -21,103 +21,95 @@ model User {
 }
 
 model UserRole {
-  IDRole   Int      @id @default(autoincrement())
+  id       Int    @id @default(autoincrement())
   RoleName String
-  Users    User[]   @relation("UserToUserRole")
-}
-
-model Customer {
-  IDCustomer   Int      @id @default(autoincrement())
-  CustomerName String
-  ContactName  String
-  Email        String
-  Tickets      Ticket[]
+  Users    User[] @relation("UserToUserRole")
 }
 
 model Image {
-  IDImage   Int      @id @default(autoincrement())
-  url       String
-  TicketID  Int?
-  CommentID Int?
-  GuestTicketID Int?
-  Comment   Comment? @relation(fields: [CommentID], references: [IDComment])
-  Ticket    Ticket?  @relation(fields: [TicketID], references: [IDTicket])
-  GuestTicket GuestTicket? @relation(fields: [GuestTicketID], references: [IDGuestTicket])
+  id              Int          @id @default(autoincrement())
+  url             String
+  ticket_id       Int?
+  CommentID       Int?
+  guest_ticket_id Int?
+  Comment         Comment?     @relation(fields: [CommentID], references: [id])
+  Ticket          Ticket?      @relation(fields: [ticket_id], references: [id])
+  GuestTicket     GuestTicket? @relation(fields: [guest_ticket_id], references: [id])
 }
 
 model File {
-  IDFile    Int      @id @default(autoincrement())
-  url       String
-  name      String
-  TicketID  Int?
-  CommentID Int?
-  GuestTicketID Int?
-  Comment   Comment? @relation(fields: [CommentID], references: [IDComment])
-  Ticket    Ticket?  @relation(fields: [TicketID], references: [IDTicket])
-  GuestTicket GuestTicket? @relation(fields: [GuestTicketID], references: [IDGuestTicket])
+  id             Int          @id @default(autoincrement())
+  url            String
+  name           String
+  ticket_id      Int?
+  CommentID      Int?
+  Guestticket_id Int?
+  Comment        Comment?     @relation(fields: [CommentID], references: [id])
+  Ticket         Ticket?      @relation(fields: [ticket_id], references: [id])
+  GuestTicket    GuestTicket? @relation(fields: [Guestticket_id], references: [id])
 }
 
 model Comment {
-  IDComment Int      @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   Content   String
-  TicketID  Int
+  ticket_id Int
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   UserID    Int?
-  Ticket    Ticket   @relation(fields: [TicketID], references: [IDTicket])
-  User      User?    @relation(fields: [UserID], references: [IDUser])
+  Ticket    Ticket   @relation(fields: [ticket_id], references: [id])
+  User      User?    @relation(fields: [UserID], references: [id])
   Files     File[]
   Images    Image[]
 }
 
 model M2MToken {
   id        Int      @id @default(autoincrement())
-  token     String   @db.Text  // Stores the M2M token (large string)
-  expiry    BigInt   // UNIX timestamp representing when the token expires
-  createdAt DateTime @default(now())  // Automatically store the creation time
-  updatedAt DateTime @updatedAt       // Automatically update the time when a record is modified
+  token     String   @db.Text // Stores the M2M token (large string)
+  expiry    BigInt // UNIX timestamp representing when the token expires
+  createdAt DateTime @default(now()) // Automatically store the creation time
+  updatedAt DateTime @updatedAt // Automatically update the time when a record is modified
 }
 
 model Ticket {
-  AssignedUserID Int?
-  Description    String?
-  Priority       String
-  Status         String?
-  Title          String?
-  IDTicket       Int         @id @default(autoincrement())
-  Department     String?
-  SiteName       String?
-  LocationCD     Int?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  Category       String
-  incidentDate   DateTime?
-  VehicleID      String?
-  driversName    String?
-  customer_id     Int?
-  CustomerID     Int? 
-  Dealer         String?
-  Contact        String?
-  Solution       String?
-  phone          String?
-  Supported      String?
-  Platform       String?
-  isEscalated    String?
-  Email          String?
-  Reporter       String?
-  CustomerName   String?
-  JiraTicketID   Int?
-  TicketNumber   String?
-  Comments       Comment[]
-  Files          File[]
-  Images         Image[]
-  AssignedUser   User?       @relation(fields: [AssignedUserID], references: [IDUser])
-  Customer       Customer?   @relation(fields: [CustomerID], references: [IDCustomer])
-  JiraTicket     JiraTicket? @relation(fields: [JiraTicketID], references: [IDJiraTicket])
+  id            Int       @id @default(autoincrement())
+  description   String?
+  priority      String
+  status        String?
+  title         String?
+  department    String?
+  site_name     String?
+  site_id       Int?
+  customer_name String?
+  customer_id   Int?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  category      String
+  incident_date DateTime?
+  vehicle_id    String?
+  drivers_name  String?
+
+  dealer       String?
+  contact      String?
+  solution     String?
+  phone        String?
+  supported    String?
+  platform     String?
+  is_escalated String?
+  email        String?
+  reporter     String?
+
+  jira_ticket_id   Int?
+  ticket_number    String?
+  comments         Comment[]
+  files            File[]
+  images           Image[]
+  assigned_user_id Int?
+  assigned_user    User?       @relation(fields: [assigned_user_id], references: [id])
+  jira_ticket      JiraTicket? @relation(fields: [jira_ticket_id], references: [id])
 }
 
 model JiraTicket {
-  IDJiraTicket   Int      @id @default(autoincrement())
+  id             Int      @id @default(autoincrement())
   key            String?
   CreationDate   String?
   Description    String?
@@ -131,18 +123,17 @@ model JiraTicket {
   Tickets        Ticket[]
 }
 
-
 model GuestTicket {
-  IDGuestTicket      Int      @id @default(autoincrement())
-  yourName           String
-  yourEmail          String
+  id                    Int      @id @default(autoincrement())
+  yourName              String
+  yourEmail             String
   vehicleIdOrDriverName String
-  reportedBy         String
-  customerName        String
-  issue              String
-  issueTime          DateTime
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  Files              File[]
-  Images    Image[]
+  reportedBy            String
+  customerName          String
+  issue                 String
+  issueTime             DateTime
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  Files                 File[]
+  Images                Image[]
 }
