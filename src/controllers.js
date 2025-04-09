@@ -2477,21 +2477,21 @@ exports.approveGuestTicket = async (req, res) => {
 
     // Crear un nuevo ticket en el modelo principal
     const newTicket = {
-      Title: guestTicket.issue,
-      Description: guestTicket.issue,
-      Priority: "Medium", 
-      Status: "To Do",
-      VehicleID: guestTicket.vehicleIdOrDriverName,
-      driversName: guestTicket.vehicleIdOrDriverName,
-      Reporter: guestTicket.reportedBy,
-      Companyname: guestTicket.companyName,
-      Email: guestTicket.yourEmail,
+      title: guestTicket.issue,
+      description: guestTicket.issue,
+      priority: "Medium", 
+      status: "To Do",
+      vehicle_id: guestTicket.vehicleIdOrDriverName,
+      drivers_name: guestTicket.vehicleIdOrDriverName,
+      reporter: guestTicket.reportedBy,
+      company_name: guestTicket.companyName,
+      email: guestTicket.yourEmail,
       incidentDate: guestTicket.issueTime,
-      Category: "Guess ticket", // Ajusta esto según tus necesidades
-      Files: {
+      category: "Guess ticket", // Ajusta esto según tus necesidades
+      files: {
         connect: guestTicket.Files.map(file => ({ id: file.id }))
       },
-      Images: {
+      images: {
         connect: guestTicket.Images.map(image => ({ id: image.id }))
       }
     };
@@ -2732,11 +2732,11 @@ exports.getCategoryCount = async (req, res) => {
   try {
     const categoryCounts = await prisma.$queryRaw`
       SELECT 
-        COALESCE(t."Category", 'Uncategorized') as name,
+        COALESCE(t."category", 'uncategorized') as name,
         CAST(COUNT(*) AS INTEGER) as value
       FROM "Ticket" t
-      WHERE t."Category" IS NOT NULL
-      GROUP BY t."Category"
+      WHERE t."category" IS NOT NULL
+      GROUP BY t."category"
       ORDER BY value DESC
     `;
 
@@ -2765,7 +2765,7 @@ exports.getCustomers = async (req, res) => {
   try {
     await client.connect(); // Establish connection
 
-    const query = `SELECT DISTINCT "USER_CD", "USER_NAME" FROM "public"."FMS_CUST_MST"`;
+    const query = `SELECT DISTINCT "USER_CD" as customer_id, "USER_NAME" as customer_name FROM "public"."FMS_CUST_MST"`;
     const result = await client.query(query);
 
     await client.end(); // Close connection
@@ -2793,7 +2793,7 @@ exports.getSites = async (req, res) => {
   
   try {
     const query = `
-      SELECT DISTINCT FLM."LOCATION_CD", FLM."NAME" 
+      SELECT DISTINCT FLM."LOCATION_CD" as site_id, FLM."NAME" as site_name
       FROM "FMS_USR_VEHICLE_REL" FUVR
       JOIN "FMS_LOC_MST" FLM ON FUVR."LOC_CD" = FLM."LOCATION_CD"
       WHERE FUVR."USER_CD" = $1
@@ -2824,7 +2824,17 @@ exports.getSites = async (req, res) => {
 
 exports.getVehicles = async (req, res) => {
   const { site, customer, gmptCode } = req.query;
+  /*FIXME: Eliminar despues de comprender
+  en los nuevos controladores seria algo asi
 
+  if (!customer && !gmptCode) {
+    return res.status(400).json({ error: "Customer or GMPT Code is required" });
+  }
+  const getVehicles = await vehiclesService.getVehicleService(req.query)
+
+  // in folder Vehicle/services/index
+  const { site, customer, gmptCode } = req.query;
+  */
   if (!customer && !gmptCode) {
     return res.status(400).json({ error: "Customer or GMPT Code is required" });
   }
@@ -2925,8 +2935,8 @@ async function fetchVehicleInfo(client, vehicleCDs) {
                 'fullLockoutEnabled', fvm."full_lockout_enabled",
                 'fullLockoutTimeout', fvm."full_lockout_timeout",
                 -- Added Customer and Site Names:
-                'customerName', cust."USER_NAME",
-                'siteName', loc."NAME"
+                'customer_name', cust."USER_NAME",
+                'site_name', loc."NAME"
             ) AS vehicle_info
         FROM "equipment_view" ev
         LEFT JOIN "FMS_VEHICLE_MST" fvm ON ev."gmtp_id" = fvm."VEHICLE_ID"
@@ -2988,23 +2998,23 @@ exports.getTicketsByLocation = async (req, res) => {
   console.log('Fetching tickets by location...'); // Log para verificar que la función se está llamando
   console.log('Received query parameters:', req.query); // Log the received query parameters
   try {
-      const { locationCD } = req.query;  // Obtener el parámetro desde la URL
+      const { site_id } = req.query;  // Obtener el parámetro desde la URL
 
-      if (!locationCD) {
-          return res.status(400).json({ message: 'Missing locationCD parameter' });
+      if (!site_id) {
+          return res.status(400).json({ message: 'Missing site_id parameter' });
       }
 
       // Convertir a número
-      const locationId = parseInt(locationCD);
+      const locationId = parseInt(site_id);
 
       if (isNaN(locationId)) {
-          return res.status(400).json({ message: 'Invalid locationCD parameter' });
+          return res.status(400).json({ message: 'Invalid site_id parameter' });
       }
 
-      // Consultar los tickets con el `LocationCD` especificado
+      // Consultar los tickets con el `site_id` especificado
       const tickets = await prisma.ticket.findMany({
           where: {
-              LocationCD: locationId
+              site_id: locationId
           },
           include: {
               Customer: {
@@ -3273,10 +3283,10 @@ exports.getTicketsByStatus = async (req, res) => {
 
 // In controllers.js
 exports.getGmptCodesBySite = async (req, res) => {
-  const { locationCD } = req.query;
+  const { site_id } = req.query;
 
-  if (!locationCD) {
-    return res.status(400).json({ error: 'Missing locationCD' });
+  if (!site_id) {
+    return res.status(400).json({ error: 'Missing site_id' });
   }
 
   const fleetiq = new Client({
@@ -3298,7 +3308,7 @@ exports.getGmptCodesBySite = async (req, res) => {
       JOIN "FMS_USR_VEHICLE_REL" "R" ON "V"."VEHICLE_CD" = "R"."VEHICLE_CD"
       WHERE "R"."LOC_CD" = $1;
     `;
-    const result = await client.query(query, [locationCD]);
+    const result = await client.query(query, [site_id]);
     const codes = result.rows.map(row => row.VEHICLE_ID); // Make sure column name is lowercase
     res.json(codes);
   } catch (err) {
@@ -3307,7 +3317,7 @@ exports.getGmptCodesBySite = async (req, res) => {
   } finally {
     await client.end();
   }
-  console.log("Solicitud recibida en /gmpt-codes con locationCD:", req.query.locationCD);
+  console.log("Solicitud recibida en /gmpt-codes con site_id:", req.query.site_id);
 };
 
 
