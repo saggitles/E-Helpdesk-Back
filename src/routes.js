@@ -2,60 +2,21 @@ const express = require('express');
 const router = express.Router();
 const controllers = require('./controllers');
 const ticketControllers = require('./Tickets/controllers/')
+const vehicleControllers = require('./Vehicles/controllers/')
 const { auth } = require('express-oauth2-jwt-bearer');
-
-
-// Version api 2
-
-// api/v2/
-
-router.post('/v2/tickets', ticketControllers.createTicket);
-
-// GUEST
-router.post('/createGuestTicket', controllers.createGuestTicket); 
-
-router.get('/getGuestTickets', controllers.getGuestTickets); 
-
-router.delete('/deleteGuestTicket/:IDGuestTicket', controllers.deleteGuestTicket);
-
-router.post('/approveGuestTicket/:IDGuestTicket',  controllers.approveGuestTicket);
+// Add this at top of routes.js
+console.log('Available vehicle controller methods:', Object.keys(vehicleControllers));
 
 
 
-// const jwtCheck = auth({
-//     audience: 'https://www.ehelpdesk.com',
-//     issuerBaseURL: `https://${process.env.DOMAIN}`,
-//     tokenSigningAlg: 'RS256'
-// });
 
 
-// router.use(jwtCheck);
-
-// router.get('/customers', controllers.requireReadCustomerPermission, controllers.getCustomers);
-// router.get('/tickets', controllers.requireReadTicketPermission, controllers.getTickets);
-// router.get('/ticketspagination', controllers.requireReadTicketPermission, controllers.getTicketsPagination);
-
-// router.get('/tickets/:id', controllers.requireReadTicketPermission, controllers.getTicket);
-// router.get('/tickets/:id/comments', controllers.requireReadTicketPermission, controllers.getCommentsForTicket);
-// router.get('/tickets/:id/attachments', controllers.requireReadTicketPermission, controllers.getAttachmentsForTicket);
-// router.post('/tickets/:id/attachments', controllers.requireReadTicketPermission, controllers.uploadFile);
-// router.post('/tickets', controllers.requireReadTicketPermission, controllers.createTicket)
-// router.post('/import', controllers.requireReadTicketPermission, controllers.importTickets)
-// router.get('/deleteTicketsAndComents', controllers.requireReadTicketPermission, controllers.deleteTicketsAndComents)
-
-// router.delete('/tickets/:id/attachments/:attachmentId', controllers.requireReadTicketPermission, controllers.deleteAttachment);
-// router.delete('/tickets/:id', controllers.requireReadTicketPermission, controllers.deleteTicket)
-
-
-router.get('/customers',  controllers.getCustomers);
-router.get('/tickets',  controllers.getTickets);
 router.get('/ticketspagination', controllers.getTicketsPagination);
 
-router.get('/tickets/:id', controllers.getTicket);
+//router.get('/tickets/:id', controllers.getTicket);
 router.get('/tickets/:id/comments', controllers.getCommentsForTicket);
 router.get('/tickets/:id/attachments', controllers.getAttachmentsForTicket);
 router.post('/tickets/:id/attachments', controllers.uploadFile);
-router.post('/tickets', controllers.createTicket)
 router.post('/import', controllers.importTickets)
 router.get('/deleteTicketsAndComents', controllers.deleteTicketsAndComents)
 
@@ -64,8 +25,8 @@ router.delete('/tickets/:id', controllers.deleteTicket)
 
 router.put('/tickets/assign/:id', controllers.assignUserToTicket)
 router.get('/tickets/:ticketId/assigneduser', controllers.getAssignedUserForTicket);
-router.put('/updateTicketCategory/:id', controllers.updateTicketCategory)
-router.put('/updateTicketStatus/:id', controllers.updateTicketStatus)
+//router.put('/updateTicketCategory/:id', controllers.updateTicketCategory)
+//router.put('/updateTicketStatus/:id', controllers.updateTicketStatus)
 
 router.get('/comments', controllers.getComments);
 router.post('/comments', controllers.createComment);
@@ -84,7 +45,6 @@ router.get('/roles', controllers.getRoles);
 router.get('/roles/:id', controllers.getRoleByID);
 router.post('/roles', controllers.createRole);
 router.delete('roles/:id', controllers.deleteRole);
-router.put('/tickets/:id', controllers.updateTicket);
 router.delete('/tickets/:id', controllers.deleteTicket);
 
 // -- JIRA
@@ -106,22 +66,6 @@ router.post('/iotdevices', controllers.fetchIoTDevices)
 // -- FLEETXQ
 
 router.post('/getvehicledetail', controllers.getVehicleDetail);
-
-
-// FLEET IQ 
-// gmtpid
-// router.get('/fleetiq',controllers.requireReadTicketPermission, controllers.fleetiq); 
-
-// // serialid
-// router.post('/fleetiqserial/:serialNo/:userName', controllers.requireReadTicketPermission, controllers.fleetiqserial);
-
-
-
-// //GET ALL DEALERS
-// router.get('/dealers', controllers.requireReadTicketPermission, controllers.getAllDealers);
-
-// //Get companys from dealer
-// router.get('/getCompanyFromDealer/:dealer_id', controllers.requireReadTicketPermission, controllers.getCompanyFromDealer);
 
 
 // FleetIQ
@@ -151,40 +95,42 @@ router.post('/tickets/paginated', controllers.getPaginatedTickets);
 
 router.post('/chatbot', controllers.handleChatbot);
 
-router.get('/cake', controllers.getAssignedTicketCount);
 
-router.get('/cake/status', controllers.getStatusCount);
 
-router.get('/cake/category', controllers.getCategoryCount);
 
 
 
 router.get('/', controllers.getWelcome);
-router.get('/customers', controllers.getCustomers);
-router.get('/sites', controllers.getSites);
-router.get('/vehicles', controllers.getVehicles);
 
+
+
+//router.put('/tickets/:id', controllers.updateTicket);
+
+router.get('/tickets',  controllers.getTickets);
+router.get('/cake', controllers.getAssignedTicketCount);
+router.get('/cake/status', controllers.getStatusCount);
+router.get('/cake/category', controllers.getCategoryCount);
+//router.post('/tickets', controllers.createTicket)
 router.get('/ticket/site', controllers.getTicketsByLocation);
-
-router.get("/available-dates", controllers.getAvailableDates);
-
-router.get("/available-times", controllers.getAvailableTimes);
-
-router.get("/snapshots", controllers.getVehicleSnapshots);
-
-router.get('/tickets/export', (req, res, next) => {
-    console.log('Authorization Header:', req.headers.authorization);
-    console.log('Route hit: /tickets/export');
-    next();
-  }, controllers.exportAllTickets);
-  
-router.get('/gmpt-codes', (req, res, next) => {
-  console.log("Solicitud recibida en /gmpt-codes");
-  next();
-}, controllers.getGmptCodesBySite);
-
-
-
+router.get('/tickets/export', controllers.exportAllTickets);
 router.get('/tickets/filterByStatus', controllers.getTicketsByStatus);
+router.get('/gmpt-codes', controllers.getGmptCodesBySite);
+
+
+
+router.get('/customers', vehicleControllers.getCustomers);
+router.get('/sites', vehicleControllers.getSites);
+router.get('/vehicles', vehicleControllers.getVehicles);
+router.get("/available-dates", vehicleControllers.getAvailableDates);
+router.get("/available-times", vehicleControllers.getAvailableTimes);
+router.get("/snapshots", vehicleControllers.getVehicleSnapshots);
+
+
+// Version api 2
+
+// api/v2/
+
+router.post('/tickets', ticketControllers.createTicket);
+router.put('/tickets/:id', ticketControllers.updateTicket);
 
 module.exports = router;

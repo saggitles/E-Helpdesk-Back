@@ -12,9 +12,12 @@ const unlinkAsync = promisify(fs.unlink);
 const express = require('express');
 const app = express();
 const ticketServices = require('../services/')
+const { dateFormatForDatabaseRequest } = require('../../utils/date');
+const { successfulResponse } = require('../../utils/response-helper');
+const { updateTicket } = require('../../controllers');
 app.use(express.json());
 
-const checkPermission = (claims, permission) => {
+  const checkPermission = (claims, permission) => {
 
     if (!claims || !claims.permissions || !claims.permissions.includes(permission)) {
       return false;
@@ -43,7 +46,7 @@ const checkPermission = (claims, permission) => {
       next();
     };
   };
-exports.createTicket = async (req, res) => {
+  exports.createTicket = async (req, res) => {
 
     console.log('holis')
     /*
@@ -77,19 +80,66 @@ exports.createTicket = async (req, res) => {
       }
 
       if (newTicket.incident_date) {
-        newTicket.incident_date = new Date(newTicket.incident_date).toISOString();
+        newTicket.incident_date = dateFormatForDatabaseRequest(newTicket.incident_date);
       }
 
       const createdTicket = await ticketServices.createTicketService(newTicket)
-
-     res.status(200).json({
-        "status": 200,
-        "message": "Ticket successfully created",
-        "data": createdTicket
-     });
+      
+      res.status(200).json(successfulResponse({data: createdTicket, message: "Ticket created successful!"}));
     } catch (error) {
       console.error('Error creating ticket:', error.message);
       res.status(500).json({ error: 'Internal server error' });
+    }
+  };
+  
+
+  exports.updateTicket = async (req, res) => {
+    console.log('Request Body:', req.body); // Ver contenido del body
+    let ticketId = req.params.id;
+    console.log('Ticket ID:', ticketId); // Ver ID del ticket
+    const { Category, Status, Solution, ...updatedFields } = req.body;
+    console.log('Updated Fields:', updatedFields); // Ver campos a actualizar
+    /*
+      req.body = { attr1: 'valor1', attr2 }
+      req.body.attr1 
+      destructuring
+      const { attr1 } = req.body
+      console.log(attr1) === console.log(req.body.attr1)
+    */
+    // Parse the ticket ID if it's a number.
+    if (!isNaN(ticketId)) {
+      ticketId = parseInt(ticketId, 10);
+    }
+  
+    // // Handle JiraTicketID if provided.
+    // FIXME: Funcionlidad a desarrollar 
+    // if (JiraTicketID !== undefined) {
+    //   updatedFields.JiraTicket = JiraTicketID === null
+    //     ? { disconnect: true }
+    //     : { connect: { id: parseInt(jira_ticket_id, 10) } };
+    // }
+  
+    // we add the ticketId recieved from the params as id to the updatedFields object
+    updatedFields.id = ticketId;
+    if (Category) {
+      updatedFields.category = Category; // Normalize field name
+    }
+    if (Status){
+      updatedFields.status = Status;
+    }
+    if (Solution){
+      updatedFields.solution = Solution;
+    }
+    try {
+      console.log('Updating ticket with data:', updatedFields); // Ver los datos antes de la actualización
+      
+      const updatedTicket = await ticketServices.updateTicketService(updatedFields)
+  
+      console.log('Ticket updated successfully:', updatedTicket); // Ver el resultado de la actualización
+      res.status(200).json(successfulResponse({data: updatedTicket, message: "Ticket updated successfuly!"}));
+    } catch (error) {
+      console.error("Error updating ticket:", error);
+      res.status(500).json({ error: "Internal server error", details: error.message });
     }
   };
   
