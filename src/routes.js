@@ -9,24 +9,33 @@ console.log('Available vehicle controller methods:', Object.keys(vehicleControll
 
 
 
+// Tickets
 
-
+router.get('/tickets',  ticketControllers.getTickets);
+router.get('/ticket/site', controllers.getTicketsByLocation);
+router.get('/tickets/export', ticketControllers.exportAllTickets);
+router.get('/tickets/filterByStatus', controllers.getTicketsByStatus);
 router.get('/ticketspagination', controllers.getTicketsPagination);
 
-//router.get('/tickets/:id', controllers.getTicket);
-router.get('/tickets/:id/comments', controllers.getCommentsForTicket);
-router.get('/tickets/:id/attachments', controllers.getAttachmentsForTicket);
-router.post('/tickets/:id/attachments', controllers.uploadFile);
-router.post('/import', controllers.importTickets)
-router.get('/deleteTicketsAndComents', controllers.deleteTicketsAndComents)
 
-router.delete('/tickets/:id/attachments/:attachmentId', controllers.deleteAttachment);
+router.get('/tickets/:id/comments', ticketControllers.getCommentsForTicket);
+router.get('/tickets/:id/attachments', ticketControllers.getAttachmentsForTicket);
+router.post('/tickets/:id/attachments', ticketControllers.uploadFile);
+router.delete('/tickets/:id/attachments/:attachmentId', ticketControllers.deleteAttachment);
+
+router.post('/import', controllers.importTickets)
+
+router.put('/tickets/assign/:id', ticketControllers.updateTicket)
+router.get('/tickets/:ticketId/assigneduser', controllers.getAssignedUserForTicket);
+
+
+router.post('/tickets', ticketControllers.createTicket);
+router.get('/gmpt-codes', ticketControllers.getGmptCodesBySite);
+router.put('/tickets/update/:id', ticketControllers.updateTicket);
+router.get('/tickets/:id', ticketControllers.getTicket);
 router.delete('/tickets/delete/:id', controllers.deleteTicket)
 
-router.put('/tickets/assign/:id', controllers.assignUserToTicket)
-router.get('/tickets/:ticketId/assigneduser', controllers.getAssignedUserForTicket);
-//router.put('/updateTicketCategory/:id', controllers.updateTicketCategory)
-//router.put('/updateTicketStatus/:id', controllers.updateTicketStatus)
+//Comments
 
 router.get('/comments', controllers.getComments);
 router.post('/comments', controllers.createComment);
@@ -34,6 +43,7 @@ router.get('/comments/:id', controllers.getComment);
 router.put('/comments/:id', controllers.updateComment);
 router.delete('/comments/:id', controllers.deleteComment);
 
+// users
 router.get('/users', controllers.getUsers);
 router.get('/users/:id', controllers.getUser);
 router.get('/users/:userId/roles', controllers.getRolesForUser);
@@ -104,15 +114,11 @@ router.get('/', controllers.getWelcome);
 
 
 
-router.get('/tickets',  controllers.getTickets);
 router.get('/cake', controllers.getAssignedTicketCount);
 router.get('/cake/status', controllers.getStatusCount);
 router.get('/cake/category', controllers.getCategoryCount);
 //router.post('/tickets', controllers.createTicket)
-router.get('/ticket/site', controllers.getTicketsByLocation);
-router.get('/tickets/export', controllers.exportAllTickets);
-router.get('/tickets/filterByStatus', controllers.getTicketsByStatus);
-router.get('/gmpt-codes', controllers.getGmptCodesBySite);
+
 
 
 
@@ -128,7 +134,5 @@ router.get("/snapshots", vehicleControllers.getVehicleSnapshots);
 
 // api/v2/
 
-router.post('/tickets', ticketControllers.createTicket);
-router.put('/tickets/update/:id', ticketControllers.updateTicket);
-router.get('/tickets/:id', controllers.getTicket);
+
 module.exports = router;

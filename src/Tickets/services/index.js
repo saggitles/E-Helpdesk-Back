@@ -16,9 +16,19 @@ exports.updateTicketService = async (payload) => {
     delete payload.open_since;
     delete payload.created_at;
 
+    if (payload.is_escalated !== undefined) {
+      payload.is_escalated = payload.is_escalated ? "true" : "false";
+  }
+  
     const updatedData = {
         ...payload,
-        // Only include date fields if they exist
+        ...(payload.assigned_user_id && {
+            assigned_user: {
+                connect: { 
+                    id: parseInt(payload.assigned_user_id) 
+                }
+            }
+        }),
         ...(payload.incident_date && {
           incident_date: dateFormatForDatabaseRequest(payload.incident_date)
         }),
@@ -29,8 +39,17 @@ exports.updateTicketService = async (payload) => {
           updated_at: dateFormatForDatabaseRequest(payload.updated_at)
         })
       };   return await prisma.ticket.update({
-        where: { id: payload.id },
-        data: updatedData,
+            where: { id: payload.id },
+            data: updatedData,
+            include: {
+              assigned_user: {
+                  select: {
+                      id: true,
+                      username: true,
+                      email: true
+                  }
+              }
+          }
       });
 }
 
