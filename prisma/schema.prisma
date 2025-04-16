@@ -8,66 +8,62 @@ datasource db {
 }
 
 model User {
-  id             Int        @id @default(autoincrement())
-  Username       String?
-  Email          String
-  FirstName      String?
-  LastName       String?
-  UserRoleID     Int?
-  IoTAccessToken String?
-  Comments       Comment[]
-  Tickets        Ticket[]
-  UserRole       UserRole[] @relation("UserToUserRole")
+  id               Int        @id @default(autoincrement())
+  username         String?
+  email            String
+  first_name       String?
+  last_name        String?
+  user_role_id     Int?
+  iot_access_token String?
+  comments         Comment[]
+  tickets          Ticket[]
+  user_role        UserRole[] @relation("UserToUserRole")
 }
 
 model UserRole {
-  id       Int    @id @default(autoincrement())
-  RoleName String
-  Users    User[] @relation("UserToUserRole")
+  id        Int    @id @default(autoincrement())
+  role_name String
+  users     User[] @relation("UserToUserRole")
 }
 
 model Image {
-  id              Int          @id @default(autoincrement())
-  url             String
-  ticket_id       Int?
-  CommentID       Int?
-  guest_ticket_id Int?
-  Comment         Comment?     @relation(fields: [CommentID], references: [id])
-  Ticket          Ticket?      @relation(fields: [ticket_id], references: [id])
-  GuestTicket     GuestTicket? @relation(fields: [guest_ticket_id], references: [id])
+  id         Int      @id @default(autoincrement())
+  url        String
+  ticket_id  Int?
+  comment_id Int?
+  comment    Comment? @relation(fields: [comment_id], references: [id])
+  ticket     Ticket?  @relation(fields: [ticket_id], references: [id])
 }
 
 model File {
-  id             Int          @id @default(autoincrement())
-  url            String
-  name           String
-  ticket_id      Int?
-  CommentID      Int?
-  Guestticket_id Int?
-  Comment        Comment?     @relation(fields: [CommentID], references: [id])
-  Ticket         Ticket?      @relation(fields: [ticket_id], references: [id])
-  GuestTicket    GuestTicket? @relation(fields: [Guestticket_id], references: [id])
+  id         Int      @id @default(autoincrement())
+  url        String
+  name       String
+  ticket_id  Int?
+  comment_id Int?
+  comment    Comment? @relation(fields: [comment_id], references: [id])
+  ticket     Ticket?  @relation(fields: [ticket_id], references: [id])
 }
 
 model Comment {
-  id        Int      @id @default(autoincrement())
-  Content   String
-  ticket_id Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  UserID    Int?
-  Ticket    Ticket   @relation(fields: [ticket_id], references: [id])
-  User      User?    @relation(fields: [UserID], references: [id])
-  Files     File[]
-  Images    Image[]
+  id         Int      @id @default(autoincrement())
+  content    String
+  ticket_id  Int
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  user_id    Int?
+  ticket     Ticket   @relation(fields: [ticket_id], references: [id])
+  user       User?    @relation(fields: [user_id], references: [id])
+  files      File[]
+  images     Image[]
 }
 
 model M2MToken {
-  id        Int      @id @default(autoincrement())
-  token     String   @db.Text // Stores the M2M token (large string)
-  expiry    BigInt // UNIX timestamp representing when the token expires
-  createdAt DateTime @default(now()) // Automatically store the creation time
-  updatedAt DateTime @updatedAt // Automatically update the time when a record is modified
+  id         Int      @id @default(autoincrement())
+  token      String   @db.Text // Stores the M2M token (large string)
+  expiry     BigInt // UNIX timestamp representing when the token expires
+  created_at DateTime @default(now()) // Automatically store the creation time
+  updated_at DateTime @updatedAt // Automatically update the time when a record is modified
 }
 
 model Ticket {
@@ -109,31 +105,16 @@ model Ticket {
 }
 
 model JiraTicket {
-  id             Int      @id @default(autoincrement())
-  key            String?
-  CreationDate   String?
-  Description    String?
-  ProjectKey     String?
-  ProjectName    String?
-  ProjectType    String?
-  Status         String?
-  StatusCategory String?
-  Type           String?
-  self           String?
-  Tickets        Ticket[]
-}
-
-model GuestTicket {
-  id                    Int      @id @default(autoincrement())
-  yourName              String
-  yourEmail             String
-  vehicleIdOrDriverName String
-  reportedBy            String
-  customerName          String
-  issue                 String
-  issueTime             DateTime
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  Files                 File[]
-  Images                Image[]
+  id              Int      @id @default(autoincrement())
+  key             String?
+  creation_date   String?
+  description     String?
+  project_key     String?
+  project_name    String?
+  project_type    String?
+  status          String?
+  status_category String?
+  type            String?
+  self            String?
+  tickets         Ticket[]
 }

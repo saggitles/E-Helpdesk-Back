@@ -109,30 +109,45 @@ exports.getTickets = async (req, res) => {
 
 
 exports.getAssignedUserForTicket = async (req, res) => {
-  const ticketId = parseInt(req.params.ticketId, 10); // Convert ticketId to integer
-
   try {
-    // Fetch the ticket from the database
+    const ticketId = parseInt(req.params.id, 10);
+
+    if (isNaN(ticketId)) {
+      return res.status(400).json({ 
+        error: 'Invalid ticket ID format' 
+      });
+    }
+
     const ticket = await prisma.ticket.findUnique({
       where: {
-        IDTicket: ticketId,
+        id: ticketId
       },
-      include: {
-        AssignedUser: true, // Include the associated user (assigned user)
-      },
+      include: {  // Changed from select to include for relations
+        assigned_user: {
+          select: {
+            id: true,
+            username: true
+          }
+        }
+      }
     });
 
     if (!ticket) {
-      return res.status(404).json({ message: 'Ticket not found' });
+      return res.status(404).json({ 
+        error: 'Ticket not found' 
+      });
     }
 
-    // Extract the assigned user ID from the ticket
-    const assignedUserId = ticket.AssignedUser ? ticket.AssignedUser.IDUser : null;
+    const assignedUserId = ticket.assigned_user?.id || null;
 
-    res.json({ assigneeId: assignedUserId });
+    return res.status(200).json({ assigneeId: assignedUserId });
+
   } catch (error) {
-    console.error('Error getting assigned user for ticket:', error);
-    res.status(500).json({ message: 'Internal server error getting assigned user for ticket.' });
+    console.error('Error getting assigned user:', error);
+    return res.status(500).json({ 
+      error: 'Failed to get assigned user',
+      details: error.message 
+    });
   }
 };
 
@@ -181,7 +196,7 @@ exports.createTicket = async (req, res) => {
 exports.updateTicket = async (req, res) => {
   console.log('Request Body:', req.body); // Ver contenido del body
   let ticketId = req.params.id;
-  const { JiraTicketID, createdAt, updatedAt, incidentDate, ...updatedFields } = req.body;
+  const { JiraTicketID, ...updatedFields } = req.body;
 
   // Parse the ticket ID if it's a number.
   if (!isNaN(ticketId)) {
@@ -197,6 +212,7 @@ exports.updateTicket = async (req, res) => {
 
   // Ensure `openSince` is not included in the update.
   delete updatedFields.openSince;
+  delete updatedFields.createdAt;
 
   try {
     console.log('Updating ticket with data:', updatedFields); // Ver los datos antes de la actualización
@@ -365,66 +381,90 @@ exports.deleteTicket = async (req, res) => {
 
 // COMMENTS
 
-// exports.createComment = async (req, res) => {
-//   const newComment = req.body;
-  
-//   try {
-//     const createdComment = await prisma.comment.create({ data: newComment });
-//     res.status(201).json(createdComment);
-//   } catch (error) {
-//     res.status(500).json({ error: 'Error creating comment' });
-//   }
-// };
+
 
 exports.createComment = async (req, res) => {
-  const { Content, TicketID } = req.body;
-  
   try {
-    const token = req.headers.authorization; // Assuming the access token is provided in the Authorization header
-    if (!token) {
-      return res.status(401).json({ error: 'Access token is missing' });
+    console.log('Request Body:', req.body);
+    const { Content, TicketID } = req.body;
+
+    // Input validation
+    if (!Content || !TicketID) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        details: 'Content and TicketID are required'
+      });
     }
 
-    // Fetch user information from the /userinfo endpoint using the access token
-    const userInfoResponse = await axios.get('https://dev-so03q0yu6n6ltwg2.us.auth0.com/userinfo', {
-      headers: {
-        Authorization: token,
-      },
+    // Get user from Auth0
+    const token = req.headers.authorization;
+    if (!token) {
+      return res.status(401).json({ error: 'Access token missing' });
+    }
+
+    // Get Auth0 user info
+    const userInfoResponse = await axios.get(
+      'https://dev-so03q0yu6n6ltwg2.us.auth0.com/userinfo',
+      { headers: { Authorization: token } }
+    );
+    console.log('Auth0 User:', userInfoResponse.data);
+
+    // Get backend user
+    const userResponse = await axios.get(
+      `https://ci-ehelpdesk-be.azurewebsites.net/api/users/?email=${userInfoResponse.data.email}`,
+      { headers: { Authorization: token } }
+    );
+    console.log('Backend User:', userResponse.data);
+
+    if (!userResponse.data?.[0]) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // First verify user exists in database
+    const userId = parseInt(userResponse.data[0].IDUser);
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
     });
 
-    console.log("userInfoResponse",userInfoResponse)
+    if (!user) {
+      // Create user if doesn't exist
+      await prisma.user.create({
+        data: {
+          id: userId,
+          email: userInfoResponse.data.email,
+          username: userResponse.data[0].Username || userInfoResponse.data.email
+        }
+      });
+    }
 
-    const userEmail = userInfoResponse.data.email; // Get the user's email from the response
-
-    // Fetch user data from your backend using the user's email and access token
-    const userResponse = await axios.get(`https://ci-ehelpdesk-be.azurewebsites.net/api/users/?email=${userEmail}`, {
-      headers: {
-        Authorization: token,
-      },
-    });
-
-    console.log("USER RESPONSE", userResponse.data[0].IDUser)
-    const { IDUser } = userResponse.data[0]; // Assuming the user ID is available in the response data
-
-    // Create the comment and associate it with the user retrieved from the database
-    const createdComment = await prisma.comment.create({
+    // Create comment
+    const comment = await prisma.comment.create({
       data: {
-        Content,
-        Ticket: { connect: { IDTicket: TicketID } },
-        User: { connect: { IDUser } }, // Assign the user to the comment
+        content: Content,
+        ticket_id: parseInt(TicketID),
+        user_id: userId
       },
       include: {
-        User: true, // Include the user information in the response
-      },
+        user: {
+          select: {
+            username: true,
+            email: true
+          }
+        }
+      }
     });
-    
-    // Send the response with the created comment and user information
-    res.status(201).json(createdComment);
+
+    return res.status(201).json(comment);
+
   } catch (error) {
-    console.error('Error creating comment:', error);
-    res.status(500).json({ error: 'Error creating comment' });
+    console.error('Comment creation error:', error);
+    return res.status(500).json({
+      error: 'Failed to create comment',
+      details: error.message
+    });
   }
 };
+
 
 // Borra tickets y borra comentarios
 exports.deleteTicketsAndComents = async (req, res) => {
@@ -489,23 +529,57 @@ exports.updateComment = async (req, res) => {
 };
 
 exports.deleteComment = async (req, res) => {
-  const { id } = req.params;
-  
   try {
-    const deletedComment = await prisma.comment.delete({
-      where: {
-        IDComment: Number(id),
-      },
+    const commentId = parseInt(req.params.id);
+
+    if (isNaN(commentId)) {
+      return res.status(400).json({ 
+        error: 'Invalid comment ID format' 
+      });
+    }
+
+    // Check if comment exists
+    const comment = await prisma.comment.findUnique({
+      where: { id: commentId }
     });
 
-    res.status(200).json({ message: 'Comentario eliminado exitosamente' });
+    if (!comment) {
+      return res.status(404).json({ 
+        error: `Comment with ID ${commentId} not found` 
+      });
+    }
+
+    // Delete any associated files/images first
+    await prisma.file.deleteMany({
+      where: { comment_id: commentId }
+    });
+
+    await prisma.image.deleteMany({
+      where: { comment_id: commentId }
+    });
+
+    // Delete the comment
+    await prisma.comment.delete({
+      where: { id: commentId }
+    });
+
+    return res.status(200).json({ 
+      message: 'Comment deleted successfully' 
+    });
+
   } catch (error) {
-    res.status(500).json({ error: 'Error al eliminar el comentario' });
+    console.error('Error deleting comment:', error);
+    return res.status(500).json({
+      error: 'Failed to delete comment',
+      details: error.message
+    });
   }
 };
 
+
 exports.getCommentsForTicket = async (req, res) => {
   try {
+    console.log('Request Params:', req.params); // Log the request parameters
     const ticketId = parseInt(req.params.id);
     
     if (isNaN(ticketId)) {
@@ -519,21 +593,21 @@ exports.getCommentsForTicket = async (req, res) => {
         ticket_id: ticketId  // Matches schema field name
       },
       include: {
-        User: {
+        user: {
           select: {
-            Username: true
+            username: true
           }
         },
-        Files: true,
-        Images: true,
-        Ticket: {
+        files: true,
+        images: true,
+        ticket: {
           select: {
             title: true
           }
         }
       },
       orderBy: {
-        createdAt: 'desc'
+        created_at: 'desc'
       }
     });
 
@@ -653,16 +727,16 @@ exports.getRolesForUser = async (req, res) => {
 };
 
 exports.createUser = async (req, res) => {
-  const { Username, FirstName, LastName, Email, UserRole } = req.body;
+  const { username, first_name, last_name, email, user_role } = req.body;
 
   try {
     // Create the user
     const newUser = await prisma.user.create({
       data: {
-        Username,
-        FirstName,
-        LastName,
-        Email,
+        username,
+        first_name,
+        last_name,
+        email,
       },
     });
  
@@ -2785,7 +2859,88 @@ exports.getGmptCodesBySite = async (req, res) => {
   console.log("Solicitud recibida en /gmpt-codes con site_id:", req.query.site_id);
 };
 
+exports.getTicket = async (req, res) => {
+  try {
+    const ticketId = parseInt(req.params.id);
 
+    if (isNaN(ticketId)) {
+      return res.status(400).json({ 
+        error: 'Invalid ticket ID format' 
+      });
+    }
+
+    const ticket = await prisma.ticket.findUnique({
+      where: {
+        id: ticketId
+      },
+      include: {
+        assigned_user: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+            first_name: true,
+            last_name: true
+          }
+        },
+        jira_ticket: {
+          select: {
+            id: true,
+            key: true,
+            status: true,
+            description: true,
+            project_name: true
+          }
+        },
+        comments: {
+          include: {
+            user: {
+              select: {
+                username: true,
+                email: true
+              }
+            },
+            files: true,
+            images: true
+          },
+          orderBy: {
+            created_at: 'desc'
+          }
+        },
+        files: true,
+        images: true
+      }
+    });
+
+    if (!ticket) {
+      return res.status(404).json({ 
+        error: `Ticket with ID ${ticketId} not found` 
+      });
+    }
+
+    // Format dates for frontend
+    const formattedTicket = {
+      ...ticket,
+      created_at: ticket.created_at.toISOString(),
+      updated_at: ticket.updated_at.toISOString(),
+      incident_date: ticket.incident_date?.toISOString() || null,
+      comments: ticket.comments.map(comment => ({
+        ...comment,
+        created_at: comment.created_at.toISOString(),
+        updated_at: comment.updated_at.toISOString()
+      }))
+    };
+
+    return res.status(200).json(formattedTicket);
+
+  } catch (error) {
+    console.error('Error fetching ticket:', error);
+    return res.status(500).json({ 
+      error: 'Failed to fetch ticket',
+      details: error.message 
+    });
+  }
+};
 
 
 

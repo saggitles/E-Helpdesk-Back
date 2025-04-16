@@ -21,7 +21,7 @@ router.post('/import', controllers.importTickets)
 router.get('/deleteTicketsAndComents', controllers.deleteTicketsAndComents)
 
 router.delete('/tickets/:id/attachments/:attachmentId', controllers.deleteAttachment);
-router.delete('/tickets/:id', controllers.deleteTicket)
+router.delete('/tickets/delete/:id', controllers.deleteTicket)
 
 router.put('/tickets/assign/:id', controllers.assignUserToTicket)
 router.get('/tickets/:ticketId/assigneduser', controllers.getAssignedUserForTicket);
@@ -45,7 +45,6 @@ router.get('/roles', controllers.getRoles);
 router.get('/roles/:id', controllers.getRoleByID);
 router.post('/roles', controllers.createRole);
 router.delete('roles/:id', controllers.deleteRole);
-router.delete('/tickets/:id', controllers.deleteTicket);
 
 // -- JIRA
 
@@ -104,7 +103,6 @@ router.get('/', controllers.getWelcome);
 
 
 
-//router.put('/tickets/:id', controllers.updateTicket);
 
 router.get('/tickets',  controllers.getTickets);
 router.get('/cake', controllers.getAssignedTicketCount);
@@ -131,6 +129,6 @@ router.get("/snapshots", vehicleControllers.getVehicleSnapshots);
 // api/v2/
 
 router.post('/tickets', ticketControllers.createTicket);
-router.put('/tickets/:id', ticketControllers.updateTicket);
-
+router.put('/tickets/update/:id', ticketControllers.updateTicket);
+router.get('/tickets/:id', controllers.getTicket);
 module.exports = router;
