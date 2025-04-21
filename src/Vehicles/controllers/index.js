@@ -29,7 +29,8 @@ exports.getCustomers = async (req, res) => {
     try {
       await client.connect(); // Establish connection
   
-      const query = `SELECT DISTINCT "USER_CD" as customer_id, "USER_NAME" as customer_name FROM "public"."FMS_CUST_MST"`;
+      const query = `SELECT DISTINCT "USER_CD" AS customer_id, "USER_NAME" AS customer_name FROM "public"."FMS_CUST_MST" ORDER BY "USER_NAME" ASC;
+`;
       const result = await client.query(query);
   
       await client.end(); // Close connection
