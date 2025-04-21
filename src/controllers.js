@@ -2167,13 +2167,14 @@ exports.getCompanyFromDealer = async (req, res) => {
     await client.connect();
 
     const query = `
-      SELECT "FMS_CUST_MST"."USER_NAME"
-      FROM "FMS_CUST_MST"
-      WHERE "FMS_CUST_MST"."USER_CD" IN (
-      SELECT "dealer_cust_rel"."cust_id"
-      FROM "dealer_cust_rel"
-      WHERE "dealer_cust_rel"."dealer_id"= $1
-      );            
+          SELECT "FMS_CUST_MST"."USER_NAME"
+    FROM "FMS_CUST_MST"
+    WHERE "FMS_CUST_MST"."USER_CD" IN (
+        SELECT "dealer_cust_rel"."cust_id"
+        FROM "dealer_cust_rel"
+        WHERE "dealer_cust_rel"."dealer_id" = $1
+    )
+    ORDER BY "FMS_CUST_MST"."USER_NAME" ASC;
     `;
 
     const result = await client.query(query, [dealerId]);
