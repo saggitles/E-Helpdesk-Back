@@ -157,7 +157,7 @@ exports.createTicket = async (req, res) => {
         incident_date: incidentDate,
         drivers_name: req.body.drivers_name || "",
         vehicle_id: req.body.vehicle_id || "",
-        supported: req.body.supported,
+        created_by: req.body.created_by,
         email: req.body.email,
         platform: req.body.platform,
         solution: req.body.solution || "",
@@ -1112,6 +1112,7 @@ exports.fetchIoTDevices = async (req, res, filterText) => {
 };
 
 exports.fetchCurrentUser = async (req, res) => {
+  console.log("Fetching current user...", req.headers.authorization);
   try {
     // Get access token from request headers
     const accessToken = req.headers.authorization.split(' ')[1];
@@ -1125,6 +1126,7 @@ exports.fetchCurrentUser = async (req, res) => {
 
     // Return user data
     res.json(response.data);
+    console.log("User data:", response.data);
   } catch (error) {
     console.error('Error fetching user:', error.message);
     res.status(500).json({ error: 'An error occurred while fetching user' });

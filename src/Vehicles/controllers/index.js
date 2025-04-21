@@ -268,7 +268,7 @@ exports.getCustomers = async (req, res) => {
 }
 
 const dbConfig = {
-    host: '192.168.0.100',
+    host: '192.168.0.28',
     user: 'postgres',
     password: 'admin',
     database: 'E-helpdesk',

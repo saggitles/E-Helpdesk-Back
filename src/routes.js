@@ -132,7 +132,10 @@ router.get("/snapshots", vehicleControllers.getVehicleSnapshots);
 
 // Version api 2
 
-// api/v2/
+// Login
+router.get("/auth/callback", controllers.fetchCurrentUser);
+
+
 
 
 module.exports = router;
