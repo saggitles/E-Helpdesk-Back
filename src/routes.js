@@ -128,12 +128,11 @@ router.get('/vehicles', vehicleControllers.getVehicles);
 router.get("/available-dates", vehicleControllers.getAvailableDates);
 router.get("/available-times", vehicleControllers.getAvailableTimes);
 router.get("/snapshots", vehicleControllers.getVehicleSnapshots);
-
+router.get('/vehicle-details', vehicleControllers.getVehicleDetails);
 
 // Version api 2
 
 // Login
-router.get("/auth/callback", controllers.fetchCurrentUser);
 
 
 

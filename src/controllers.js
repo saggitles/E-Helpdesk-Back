@@ -2462,7 +2462,7 @@ exports.getTicketsByLocation = async (req, res) => {
         assigned_user: {
           select: {
             id: true,
-            Username: true
+            username: true
           }
         }
       },

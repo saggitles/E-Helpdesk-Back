@@ -98,18 +98,9 @@ exports.getCustomers = async (req, res) => {
   };
   
   exports.getVehicles = async (req, res) => {
+    console.time('getVehicles-total');
     const { site, customer, gmptCode } = req.query;
-    /*FIXME: Eliminar despues de comprender
-    en los nuevos controladores seria algo asi
-  
-    if (!customer && !gmptCode) {
-      return res.status(400).json({ error: "Customer or GMPT Code is required" });
-    }
-    const getVehicles = await vehiclesService.getVehicleService(req.query)
-  
-    // in folder Vehicle/services/index
-    const { site, customer, gmptCode } = req.query;
-    */
+    
     if (!customer && !gmptCode) {
       return res.status(400).json({ error: "Customer or GMPT Code is required" });
     }
@@ -123,9 +114,12 @@ exports.getCustomers = async (req, res) => {
     });
   
     try {
+      console.time('db-connect');
       await client.connect();
+      console.timeEnd('db-connect');
       
-      // 🔹 Step 1: Get VEHICLE_CD First (If Searching by GMPT)
+      // Get vehicle IDs first
+      console.time('get-vehicle-cds');
       let vehicleCDs = [];
       if (gmptCode) {
         const cdQuery = `SELECT "VEHICLE_CD" FROM "FMS_VEHICLE_MST" WHERE "VEHICLE_ID" = $1;`;
@@ -140,38 +134,81 @@ exports.getCustomers = async (req, res) => {
         const customerResult = await client.query(customerQuery, [customer]);
         vehicleCDs = customerResult.rows.map(row => row.VEHICLE_CD);
       }
+      console.timeEnd('get-vehicle-cds');
   
       if (vehicleCDs.length === 0) {
+        console.timeEnd('getVehicles-total');
         return res.status(404).json({ error: "No vehicles found" });
       }
   
-      //console.log("Fetched VEHICLE_CD:", vehicleCDs);
-  
-      // 🔹 Step 2: Fetch Basic Vehicle Info
+      // Fetch basic vehicle info
+      console.time('fetch-vehicle-info');
       const vehicleInfo = await fetchVehicleInfo(client, vehicleCDs);
+      console.timeEnd('fetch-vehicle-info');
   
-      // 🔹 Step 3: Fetch Additional Data (Master Codes & Blacklisted Drivers)
-      const [masterCodes, blacklistedDrivers] = await Promise.all([
-        fetchMasterCodes(client, vehicleCDs), // ✅ Using VEHICLE_CD now
-        fetchBlacklistedDrivers(client, vehicleCDs) // ✅ Using VEHICLE_CD now
-      ]);
-  
-      await client.end();
-  
-      // 🔹 Step 4: Merge Additional Data into Vehicle Info
-      const responseData = vehicleInfo.map(vehicle => ({
+      // Immediately return basic vehicle info
+      const basicData = vehicleInfo.map(vehicle => ({
         ...vehicle,
-        master_codes: masterCodes[vehicle.VEHICLE_CD] || [],
-        blacklisted_drivers: blacklistedDrivers[vehicle.VEHICLE_CD] || []
+        master_codes: [],
+        blacklisted_drivers: []
       }));
   
-      return res.status(200).json(responseData);
+      console.timeEnd('getVehicles-total');
+      return res.status(200).json(basicData);
   
     } catch (err) {
       console.error("Database Query Failed:", err.message);
       return res.status(500).json({ error: "Database query failed", details: err.message });
+    } finally {
+      await client.end();
     }
   };
+  // Create a new endpoint for additional data
+exports.getVehicleDetails = async (req, res) => {
+  console.time('getVehicleDetails');
+  const { vehicleCDs } = req.body; // Array of vehicle IDs
+  
+  if (!vehicleCDs || !Array.isArray(vehicleCDs) || vehicleCDs.length === 0) {
+    return res.status(400).json({ error: "Vehicle IDs are required" });
+  }
+
+  const client = new Client({
+    host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
+    port: 5432,
+    database: "multi",
+    user: "gmtp",
+    password: "MUVQcHz2DqZGHvZh",
+  });
+
+  try {
+    await client.connect();
+    
+    // Fetch just the additional data
+    console.time('fetch-additional-data');
+    const [masterCodes, blacklistedDrivers] = await Promise.all([
+      fetchMasterCodes(client, vehicleCDs),
+      fetchBlacklistedDrivers(client, vehicleCDs)
+    ]);
+    console.timeEnd('fetch-additional-data');
+
+    const detailData = {};
+    vehicleCDs.forEach(id => {
+      detailData[id] = {
+        master_codes: masterCodes[id] || [],
+        blacklisted_drivers: blacklistedDrivers[id] || []
+      };
+    });
+
+    console.timeEnd('getVehicleDetails');
+    return res.status(200).json(detailData);
+
+  } catch (err) {
+    console.error("Error fetching vehicle details:", err.message);
+    return res.status(500).json({ error: "Failed to fetch vehicle details", details: err.message });
+  } finally {
+    await client.end();
+  }
+};
   
   // ✅ Fetch Basic Vehicle Info
   async function fetchVehicleInfo(client, vehicleCDs) {
