@@ -14,6 +14,8 @@ const app = express();
 app.use(express.json());
 const vehicleServices = require('../services/')
 const { Client } = require('pg');
+const NodeCache = require('node-cache');
+const vehicleCache = new NodeCache({ stdTTL: 300, checkperiod: 60 }); // 5 minute TTL
 
 
 exports.getCustomers = async (req, res) => {
@@ -98,8 +100,9 @@ exports.getCustomers = async (req, res) => {
   };
   
   exports.getVehicles = async (req, res) => {
-    console.time('getVehicles-total');
     const { site, customer, gmptCode } = req.query;
+    
+    console.log("Request parameters:", { site, customer, gmptCode });
     
     if (!customer && !gmptCode) {
       return res.status(400).json({ error: "Customer or GMPT Code is required" });
@@ -114,37 +117,38 @@ exports.getCustomers = async (req, res) => {
     });
   
     try {
-      console.time('db-connect');
       await client.connect();
-      console.timeEnd('db-connect');
       
       // Get vehicle IDs first
-      console.time('get-vehicle-cds');
       let vehicleCDs = [];
+      
       if (gmptCode) {
+        console.log("Fetching by GMPT code:", gmptCode);
         const cdQuery = `SELECT "VEHICLE_CD" FROM "FMS_VEHICLE_MST" WHERE "VEHICLE_ID" = $1;`;
         const cdResult = await client.query(cdQuery, [gmptCode]);
         vehicleCDs = cdResult.rows.map(row => row.VEHICLE_CD);
-      } else if (site) {
+        
+      } else if (site && site !== 'undefined' && site !== '') {
+        console.log("Fetching by site:", site);
         const siteQuery = `SELECT "VEHICLE_CD" FROM "FMS_USR_VEHICLE_REL" WHERE "LOC_CD" = $1;`;
         const siteResult = await client.query(siteQuery, [site]);
         vehicleCDs = siteResult.rows.map(row => row.VEHICLE_CD);
+        
       } else {
+        console.log("Fetching by customer:", customer);
         const customerQuery = `SELECT "VEHICLE_CD" FROM "FMS_USR_VEHICLE_REL" WHERE "USER_CD" = $1;`;
         const customerResult = await client.query(customerQuery, [customer]);
         vehicleCDs = customerResult.rows.map(row => row.VEHICLE_CD);
       }
-      console.timeEnd('get-vehicle-cds');
   
+      console.log(`Found ${vehicleCDs.length} vehicles`);
+      
       if (vehicleCDs.length === 0) {
-        console.timeEnd('getVehicles-total');
         return res.status(404).json({ error: "No vehicles found" });
       }
   
       // Fetch basic vehicle info
-      console.time('fetch-vehicle-info');
       const vehicleInfo = await fetchVehicleInfo(client, vehicleCDs);
-      console.timeEnd('fetch-vehicle-info');
   
       // Immediately return basic vehicle info
       const basicData = vehicleInfo.map(vehicle => ({
@@ -153,7 +157,6 @@ exports.getCustomers = async (req, res) => {
         blacklisted_drivers: []
       }));
   
-      console.timeEnd('getVehicles-total');
       return res.status(200).json(basicData);
   
     } catch (err) {
@@ -163,52 +166,118 @@ exports.getCustomers = async (req, res) => {
       await client.end();
     }
   };
-  // Create a new endpoint for additional data
-exports.getVehicleDetails = async (req, res) => {
-  console.time('getVehicleDetails');
-  const { vehicleCDs } = req.body; // Array of vehicle IDs
-  
-  if (!vehicleCDs || !Array.isArray(vehicleCDs) || vehicleCDs.length === 0) {
-    return res.status(400).json({ error: "Vehicle IDs are required" });
-  }
 
-  const client = new Client({
-    host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
-    port: 5432,
-    database: "multi",
-    user: "gmtp",
-    password: "MUVQcHz2DqZGHvZh",
-  });
-
-  try {
-    await client.connect();
+  exports.getMasterCodes = async (req, res) => {
+    const { vehicleCDs } = req.body;
     
-    // Fetch just the additional data
-    console.time('fetch-additional-data');
-    const [masterCodes, blacklistedDrivers] = await Promise.all([
-      fetchMasterCodes(client, vehicleCDs),
-      fetchBlacklistedDrivers(client, vehicleCDs)
-    ]);
-    console.timeEnd('fetch-additional-data');
-
-    const detailData = {};
-    vehicleCDs.forEach(id => {
-      detailData[id] = {
-        master_codes: masterCodes[id] || [],
-        blacklisted_drivers: blacklistedDrivers[id] || []
-      };
+    if (!vehicleCDs || !Array.isArray(vehicleCDs) || vehicleCDs.length === 0) {
+      return res.status(400).json({ error: "Valid vehicle IDs array is required" });
+    }
+  
+    const client = new Client({
+      host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
+      port: 5432,
+      database: "multi",
+      user: "gmtp",
+      password: "MUVQcHz2DqZGHvZh",
     });
+  
+    try {
+      await client.connect();
+      
+      const masterCodes = await fetchMasterCodes(client, vehicleCDs);
+      
+      return res.status(200).json(masterCodes);
+    } catch (err) {
+      console.error("Error fetching master codes:", err.message);
+      return res.status(500).json({ 
+        error: "Failed to fetch master codes", 
+        details: err.message 
+      });
+    } finally {
+      await client.end();
+    }
+  };
+  
+  // Create new endpoint for blacklisted drivers
+  exports.getBlacklistedDrivers = async (req, res) => {
+    const { vehicleCDs } = req.body;
+    
+    if (!vehicleCDs || !Array.isArray(vehicleCDs) || vehicleCDs.length === 0) {
+      return res.status(400).json({ error: "Valid vehicle IDs array is required" });
+    }
+  
+    const client = new Client({
+      host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
+      port: 5432,
+      database: "multi",
+      user: "gmtp",
+      password: "MUVQcHz2DqZGHvZh",
+    });
+  
+    try {
+      await client.connect();
+      
+      const blacklistedDrivers = await fetchBlacklistedDrivers(client, vehicleCDs);
+      
+      return res.status(200).json(blacklistedDrivers);
+    } catch (err) {
+      console.error("Error fetching blacklisted drivers:", err.message);
+      return res.status(500).json({ 
+        error: "Failed to fetch blacklisted drivers", 
+        details: err.message 
+      });
+    } finally {
+      await client.end();
+    }
+  };
 
-    console.timeEnd('getVehicleDetails');
-    return res.status(200).json(detailData);
 
-  } catch (err) {
-    console.error("Error fetching vehicle details:", err.message);
-    return res.status(500).json({ error: "Failed to fetch vehicle details", details: err.message });
-  } finally {
-    await client.end();
-  }
-};
+  exports.getVehicleLogins = async (req, res) => {
+    const { vehicleCDs } = req.body;
+    
+    if (!vehicleCDs || !Array.isArray(vehicleCDs) || vehicleCDs.length === 0) {
+      return res.status(400).json({ error: "Valid vehicle IDs array is required" });
+    }
+  
+    const client = new Client({
+      host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
+      port: 5432,
+      database: "multi",
+      user: "gmtp",
+      password: "MUVQcHz2DqZGHvZh",
+    });
+  
+    try {
+      await client.connect();
+      
+      const vehicleLogins = await fetchVehicleLogins(client, vehicleCDs);
+      
+      return res.status(200).json(vehicleLogins);
+    } catch (err) {
+      console.error("Error fetching card swipes:", err.message);
+      return res.status(500).json({ 
+        error: "Failed to fetch card swipes", 
+        details: err.message 
+      });
+    } finally {
+      await client.end();
+    }
+  };
+
+
+  exports.clearVehicleCache = async (req, res) => {
+    try {
+      console.log('Clearing vehicle cache');
+      vehicleCache.flushAll();
+      return res.status(200).json({ message: 'Cache cleared successfully' });
+    } catch (error) {
+      return res.status(500).json({ error: 'Failed to clear cache', details: error.message });
+    }
+  };
+
+
+
   
   // ✅ Fetch Basic Vehicle Info
   async function fetchVehicleInfo(client, vehicleCDs) {
@@ -216,33 +285,33 @@ exports.getVehicleDetails = async (req, res) => {
                   SELECT DISTINCT ON (fvm."VEHICLE_CD")
                   fvm."VEHICLE_CD",
                   jsonb_build_object(
-                    'vehicleName', ev."hire_no",
-                    'serialNumber', ev."serial_no",
-                    'gmptCode', fvm."VEHICLE_ID",
-                    'firmwareVersion', ev."firmware_ver",
-                    'screenVersion', ev."product_type",
-                    'expansionVersion', ev."exp_mod_ver",
-                    'lastConnection', TO_CHAR(fvm."LAST_EOS", 'DD/MM/YYYY HH24:MI'),
+                    'vehicle_name', ev."hire_no",
+                    'serial_number', ev."serial_no",
+                    'gmpt_code', fvm."VEHICLE_ID",
+                    'firmware_version', ev."firmware_ver",
+                    'screen_version', ev."product_type",
+                    'expansion_version', ev."exp_mod_ver",
+                    'last_connection', TO_CHAR(fvm."LAST_EOS", 'DD/MM/YYYY HH24:MI'),
                     'department', fdm."DEPT_NAME",
-                    'vorSetting', fvm."vor_setting",
-                    'lockoutCode', fvm."lockout_code",
-                    'impactLockout', fvm."IMPACT_LOCKOUT",
-                    'surveyTimeout', fvm."survey_timeout",
-                    'seatIdle', fvm."seat_idle",
-                    'redImpactThreshold', ROUND(CAST(0.00388 * SQRT(GREATEST(fvm."FSSS_BASE", 0) * GREATEST(fvm."FSSSMULTI", 0) * 10) AS NUMERIC), 3),
-                    'impactRecalibrationDate', TO_CHAR(ews."impact_recalibration_date", 'DD/MM/YYYY HH24:MI'),
-                    'preopSchedule', ews."preop_schedule",
-                    'simNumber', fvm."CCID",
-                    'vehicleType', fvm."VEHICLE_TYPE_CD",
-                    'vehicleModel', vt."VEHICLE_TYPE",
+                    'vor_setting', fvm."vor_setting",
+                    'lockout_code', fvm."lockout_code",
+                    'impact_lockout', fvm."IMPACT_LOCKOUT",
+                    'survey_timeout', fvm."survey_timeout",
+                    'seat_idle', fvm."seat_idle",
+                    'red_impact_threshold', ROUND(CAST(0.00388 * SQRT(GREATEST(fvm."FSSS_BASE", 0) * GREATEST(fvm."FSSSMULTI", 0) * 10) AS NUMERIC), 3),
+                    'impact_recalibration_date', TO_CHAR(ews."impact_recalibration_date", 'DD/MM/YYYY HH24:MI'),
+                    'preop_schedule', ews."preop_schedule",
+                    'sim_number', fvm."CCID",
+                    'vehicle_type', fvm."VEHICLE_TYPE_CD",
+                    'vehicle_model', vt."VEHICLE_TYPE",
                     'status', fsd."status",
-                    'fullLockoutEnabled', fvm."full_lockout_enabled",
-                    'fullLockoutTimeout', fvm."full_lockout_timeout",
+                    'full_lockout_enabled', fvm."full_lockout_enabled",
+                    'full_lockout_timeout', fvm."full_lockout_timeout",
                     'customer_name', cust."USER_NAME",
                     'site_name', loc."NAME",
-                    'hasWifi', ns."veh_cd" IS NOT NULL,
-                    'lastDlistTimestamp', dlist."timestamp_s",
-                    'lastPreopTimestamp', preop."timestamp_s"
+                    'has_wifi', ns."veh_cd" IS NOT NULL,
+                    'last_dlist_timestamp', dlist."timestamp_s",
+                    'last_preop_timestamp', preop."timestamp_s"
                   ) AS vehicle_info
 
                 FROM "FMS_VEHICLE_MST" fvm
@@ -257,16 +326,17 @@ exports.getVehicleDetails = async (req, res) => {
 
                 -- Estado actual
                 LEFT JOIN LATERAL (
-                  SELECT 
-                    CASE 
-                      WHEN NOW() - ("date_time" AT TIME ZONE 'UTC') > INTERVAL '5 minutes' THEN 'offline'
-                      ELSE 'online'
-                    END AS status
-                  FROM "fms_stat_data"
-                  WHERE "vehicle_cd" = fvm."VEHICLE_CD"
-                  ORDER BY "date_time" DESC
-                  LIMIT 1
-                ) fsd ON TRUE
+                SELECT 
+                  CASE 
+                    WHEN NOW() - ("date_time" AT TIME ZONE 'UTC') > INTERVAL '5 minutes' THEN 'offline'
+                    ELSE 'online'
+                  END AS status
+                FROM "fms_stat_data"
+                WHERE "vehicle_cd" = fvm."VEHICLE_CD"
+                AND "date_time" > NOW() - INTERVAL '1 day'  
+                ORDER BY "date_time" DESC
+                LIMIT 1
+              ) fsd ON TRUE
 
                 -- Último dlist.txt
                 LEFT JOIN LATERAL (
@@ -299,6 +369,71 @@ exports.getVehicleDetails = async (req, res) => {
     console.log('Fetching new vehicles...',result.rows)
   
     return result.rows;
+  }
+
+  async function fetchVehicleLogins(client, vehicleCDs) {
+    // Process each vehicle ID individually to build proper WITH clauses
+    const allLogins = {};
+    
+    for (const vehicleCD of vehicleCDs) {
+      const query = `
+        WITH "vehicle_user" AS (
+          SELECT "USER_CD"
+          FROM "FMS_USR_VEHICLE_REL"
+          WHERE "VEHICLE_CD" = $1
+        ),
+        "recent_swipes" AS (
+          SELECT "DRIVER_ID", "VEH_CD", "SWIPE_TIME"
+          FROM "FMS_CARD_VERIFICATION"
+          WHERE "VEH_CD" = $1
+            AND "SWIPE_TIME" >= CURRENT_DATE - INTERVAL '2 days'
+        ),
+        "card_users" AS (
+          SELECT
+            "rs"."DRIVER_ID",
+            "rs"."SWIPE_TIME",
+            "us"."USER_CD",
+            "us"."CARD_ID",
+            "us"."CARD_PREFIX",
+            "us"."CONTACT_FIRST_NAME",
+            "us"."CONTACT_LAST_NAME"
+          FROM "recent_swipes" "rs"
+          LEFT JOIN "FMS_USR_MST" "us" ON "us"."CARD_ID" = "rs"."DRIVER_ID"
+        ),
+        "matched_users" AS (
+          SELECT 
+            "cu"."DRIVER_ID",
+            "cu"."SWIPE_TIME",
+            "cu"."USER_CD",
+            "cu"."CARD_PREFIX",
+            "cu"."CONTACT_FIRST_NAME",
+            "cu"."CONTACT_LAST_NAME"
+          FROM "card_users" "cu"
+          LEFT JOIN "FMS_USER_DEPT_REL" "ur" ON "cu"."USER_CD" = "ur"."USER_CD"
+          WHERE "ur"."CUST_CD" = (SELECT "USER_CD" FROM "vehicle_user" LIMIT 1) OR "cu"."USER_CD" IS NULL
+        )
+        SELECT
+          jsonb_build_object(
+            'driverName', CASE 
+              WHEN "CONTACT_FIRST_NAME" IS NULL OR "CONTACT_LAST_NAME" IS NULL 
+                THEN 'No Driver'
+              ELSE "CONTACT_FIRST_NAME" || ' ' || "CONTACT_LAST_NAME"
+            END,
+            'driverId', "DRIVER_ID",
+            'swipeTime', TO_CHAR("SWIPE_TIME", 'DD/MM/YYYY HH24:MI:SS'),
+            'cardPrefix', "CARD_PREFIX"
+          ) AS swipe_data
+        FROM "matched_users"
+        ORDER BY "SWIPE_TIME" DESC;
+      `;
+  
+      const result = await client.query(query, [vehicleCD]);
+      
+      // Convert the rows to the format you need
+      allLogins[vehicleCD] = result.rows.map(row => row.swipe_data);
+    }
+    
+    return allLogins;
   }
   
   // ✅ Fetch Master Codes using VEHICLE_CD

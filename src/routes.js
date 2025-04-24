@@ -128,8 +128,10 @@ router.get('/vehicles', vehicleControllers.getVehicles);
 router.get("/available-dates", vehicleControllers.getAvailableDates);
 router.get("/available-times", vehicleControllers.getAvailableTimes);
 router.get("/snapshots", vehicleControllers.getVehicleSnapshots);
-router.get('/vehicle-details', vehicleControllers.getVehicleDetails);
-
+router.post('/master-codes', vehicleControllers.getMasterCodes);
+router.post('/blacklisted-drivers', vehicleControllers.getBlacklistedDrivers);
+router.post('/clear-vehicle-cache', vehicleControllers.clearVehicleCache);
+router.post('/vehicle-logins', vehicleControllers.getVehicleLogins);
 // Version api 2
 
 // Login
