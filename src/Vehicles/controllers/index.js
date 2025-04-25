@@ -155,8 +155,6 @@ exports.getCustomers = async (req, res) => {
       // Immediately return basic vehicle info
       const basicData = vehicleInfo.map(vehicle => ({
         ...vehicle,
-        master_codes: [],
-        blacklisted_drivers: []
       }));
   
       return res.status(200).json(basicData);
@@ -187,9 +185,32 @@ exports.getCustomers = async (req, res) => {
     try {
       await client.connect();
       
-      const masterCodes = await fetchMasterCodes(client, vehicleCDs);
+      // Result object to store master codes for each vehicle
+      const result = {};
       
-      return res.status(200).json(masterCodes);
+      for (const vehicleCD of vehicleCDs) {
+        try {
+          const query = `
+            SELECT fvo."VEHICLE_CD", jsonb_build_object('masterCodeUser', fum."USER_NAME") AS master_code
+            FROM "FMS_VEHICLE_OVERRIDE" fvo
+            JOIN "FMS_USR_MST" fum ON fvo."USER_CD" = fum."USER_CD"
+            WHERE fvo."VEHICLE_CD" = ANY($1);
+          `;
+          
+          const queryResult = await client.query(query, [vehicleCD]);
+          
+          result[vehicleCD] = queryResult.rows.map(row => ({
+            master_code_user: row.master_code.masterCodeUser,
+
+          }));
+        } catch (err) {
+          console.error(`Error getting master codes for vehicle ${vehicleCD}: ${err.message}`);
+          // Initialize with empty array if there's an error
+          result[vehicleCD] = [];
+        }
+      }
+      
+      return res.status(200).json(result);
     } catch (err) {
       console.error("Error fetching master codes:", err.message);
       return res.status(500).json({ 
@@ -201,7 +222,6 @@ exports.getCustomers = async (req, res) => {
     }
   };
   
-  // Create new endpoint for blacklisted drivers
   exports.getBlacklistedDrivers = async (req, res) => {
     const { vehicleCDs } = req.body;
     
@@ -220,9 +240,31 @@ exports.getCustomers = async (req, res) => {
     try {
       await client.connect();
       
-      const blacklistedDrivers = await fetchBlacklistedDrivers(client, vehicleCDs);
+      // Result object to store blacklisted drivers for each vehicle
+      const result = {};
       
-      return res.status(200).json(blacklistedDrivers);
+      for (const vehicleCD of vehicleCDs) {
+        try {
+          const query = `
+            SELECT fdb."VEHICLE_CD", jsonb_build_object('blacklistedDriver', fum_blacklist."USER_NAME") AS blacklisted_driver
+            FROM "FMS_DRIVER_BLKLST" fdb
+            JOIN "FMS_USR_MST" fum_blacklist ON fdb."USER_CD" = fum_blacklist."USER_CD"
+            WHERE fdb."VEHICLE_CD" = ANY($1);
+          `;
+          
+          const queryResult = await client.query(query, [vehicleCD]);
+          
+          result[vehicleCD] = queryResult.rows.map(row => ({
+            driver_name: row.blacklisted_driver.blacklistedDriver,
+          }));
+        } catch (err) {
+          console.error(`Error getting blacklisted drivers for vehicle ${vehicleCD}: ${err.message}`);
+          // Initialize with empty array if there's an error
+          result[vehicleCD] = [];
+        }
+      }
+      
+      return res.status(200).json(result);
     } catch (err) {
       console.error("Error fetching blacklisted drivers:", err.message);
       return res.status(500).json({ 
@@ -262,6 +304,146 @@ exports.getCustomers = async (req, res) => {
         error: "Failed to fetch card swipes", 
         details: err.message 
       });
+    } finally {
+      await client.end();
+    }
+  };
+
+  exports.getMessagesSent = async (req, res) => {
+    const { vehicleCDs } = req.body; // These are actually GMPT codes
+    console.log('vehicleCDs from my messages', vehicleCDs);
+    
+    if (!vehicleCDs || !Array.isArray(vehicleCDs) || vehicleCDs.length === 0) {
+      return res.status(400).json({ error: "Valid vehicle IDs array is required" });
+    }
+  
+    const client = new Client({
+      host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
+      port: 5432,
+      database: "multi",
+      user: "gmtp",
+      password: "MUVQcHz2DqZGHvZh",
+    });
+  
+    try {
+      await client.connect();
+      
+      // Result object to store messages for each vehicle
+      const result = {};
+      
+      for (const vehicleCD of vehicleCDs) {
+        try {
+          
+          const query = `
+            WITH veh_id_cte AS (
+            SELECT "VEHICLE_ID"
+            FROM "FMS_VEHICLE_MST"
+            WHERE "VEHICLE_CD" = $1
+          )
+          SELECT
+            TO_CHAR(o."timestamp" AT TIME ZONE 'UTC', 'DD/MM/YYYY HH24:MI:SS') AS message_timestamp,
+            o."message" AS message_text,
+            'in_queue' AS status
+          FROM "outgoing" o
+          JOIN veh_id_cte v ON o."destination" = v."VEHICLE_ID"
+          WHERE o."timestamp" >= NOW() - INTERVAL '7 days'
+
+          UNION ALL
+
+          SELECT
+            TO_CHAR(os."timestamp_s_local" AT TIME ZONE 'UTC', 'DD/MM/YYYY HH24:MI:SS') AS message_timestamp,
+            os."message_s" AS message_text,
+            'done' AS status
+          FROM "outgoing_stat" os
+          JOIN veh_id_cte v ON os."destination_s" = v."VEHICLE_ID"
+          WHERE os."timestamp_s_local" >= NOW() - INTERVAL '3 days'
+
+          ORDER BY
+            message_timestamp DESC,
+            status;
+          `;
+          
+          const queryResult = await client.query(query, [vehicleCD]);
+          console.log('Query result:', queryResult.rows);
+          
+          result[vehicleCD] = [];
+          if (queryResult.rows.length > 0) {
+            // Clean the raw timestamp field before sending to frontend
+            const cleanedRows = queryResult.rows.map(row => {
+              // Extract message type from the message string
+              let message_type = 'Unknown';
+              const msgStr = row.message_text ? row.message_text.toLowerCase() : '';
+              console.log('msgStr', msgStr);
+
+              if (msgStr.includes('dlist.txt')) {
+                message_type = 'Driver List';
+              } else if (msgStr.includes('preop')) {
+                message_type = 'Pre-Op Checklist';
+              } else if (msgStr.includes('idmast')) {
+                message_type = 'Master Code';
+              } else if (msgStr.includes('idauth')) {
+                message_type = 'User Weigand';
+              } else if (msgStr.includes('idsave')) {
+                message_type = 'idk';
+              } else if (msgStr.includes('idbatch')) {
+                message_type = 'idk';
+              } else if (msgStr.includes('msg')) {
+                message_type = 'Message';
+              } else if (msgStr.includes('iddeny')) {
+                message_type = 'Denied Weigand';
+              } else if (msgStr.includes('wifi')) {
+                message_type = 'WIFI credentials';
+              } else if (msgStr.includes('amimp')) {
+                message_type = 'Amber Warning';
+              } else if (msgStr.includes('lockout')) {
+                message_type = 'Full Lockout';
+              } else if (msgStr.includes('fssx')) {
+                message_type = 'Impact Gforce value';
+              } else if (msgStr.includes('idle')) {
+                message_type = 'Vehicle Idle';
+              } else if (msgStr.includes('digcfg')) {
+                message_type = 'Seen Safety';
+              } else if (msgStr.includes('chkt')) {
+                message_type = 'Checklist Scheduled Time';
+              } else if (msgStr.includes('convor')) {
+                message_type = 'VOR Mode';
+              } else if (msgStr.includes('oprndm')) {
+                message_type = 'Checklist Randomisation';
+              } else if (msgStr.includes('showpc')) {
+                message_type = 'Show checklist comments';
+              } else if (msgStr.includes('surv')) {
+                message_type = 'Checklist Timeout';
+              } else if (msgStr.includes('tlist.txt')) {
+                message_type = 'Technician List';
+              }
+              
+               
+              
+
+              
+              // Return a new object with the formatted data
+              return {
+                message_text: row.message_text,
+                status: row.status,
+                message_type,
+                message_timestamp: row.message_timestamp
+              };
+            });
+            
+            result[vehicleCD] = cleanedRows;
+            console.log(`Fetched ${cleanedRows.length} messages for vehicle ${vehicleCD}`, cleanedRows);
+          }
+        } catch (err) {
+          console.error(`Error getting messages for vehicle ${vehicleCD}: ${err.message}`);
+          // Initialize with empty array if there's an error
+          result[vehicleCD] = [];
+        }
+      }
+      
+      return res.status(200).json(result);
+    } catch (err) {
+      console.error("Error in getMessagesSent:", err.message);
+      return res.status(500).json({ error: "Failed to fetch messages", details: err.message });
     } finally {
       await client.end();
     }
@@ -312,26 +494,20 @@ exports.getLastDriverLogins = async (req, res) => {
         LIMIT 10
         `;
         
-        // After getting the results and before adding to the response
 const queryResult = await client.query(query, [vehicleCD]);
 
-// Set empty array as default, then add any results
 result[vehicleCD] = [];
 if (queryResult.rows.length > 0) {
-  // Sort the results by login time (most recent first)
   const sortedRows = queryResult.rows.sort((a, b) => {
-    // Sort using the raw timestamp
     return new Date(b.raw_timestamp) - new Date(a.raw_timestamp);
   });
   
-  // Remove the raw_timestamp field before sending to frontend
   const cleanedRows = sortedRows.map(row => {
     const {  ...cleanRow } = row;
     return cleanRow;
   });
   
   result[vehicleCD] = cleanedRows;
-  console.log(`Last driver login for vehicle ${vehicleCD}:`, cleanedRows);
 }
       } catch (err) {
         console.error(`Error getting last driver login for vehicle ${vehicleCD}: ${err.message}`);
@@ -411,7 +587,7 @@ if (queryResult.rows.length > 0) {
                 LEFT JOIN LATERAL (
                 SELECT 
                   CASE 
-                    WHEN NOW() - "utc_time" > INTERVAL '10 minutes' THEN 'offline'
+                    WHEN NOW() - "utc_time" > INTERVAL '60 minutes' THEN 'offline'
                     ELSE 'online'
                   END AS status
                 FROM "fms_stat_data"
@@ -505,7 +681,7 @@ if (queryResult.rows.length > 0) {
             ELSE "CONTACT_FIRST_NAME" || ' ' || "CONTACT_LAST_NAME"
         END AS driver_name,
         "DRIVER_ID" as driver_id,
-        "SWIPE_TIME" as login_time,
+        TO_CHAR("SWIPE_TIME", 'DD/MM/YYYY HH24:MI:SS') as login_time,
         "CARD_PREFIX" as facility_code,
         "ACCEPTED" as accepted
       FROM "matched_users"
@@ -522,41 +698,6 @@ if (queryResult.rows.length > 0) {
   }
 
   
-  
-  // ✅ Fetch Master Codes using VEHICLE_CD
-  async function fetchMasterCodes(client, vehicleCDs) {
-    const query = `
-      SELECT fvo."VEHICLE_CD", jsonb_build_object('masterCodeUser', fum."USER_NAME") AS master_code
-      FROM "FMS_VEHICLE_OVERRIDE" fvo
-      JOIN "FMS_USR_MST" fum ON fvo."USER_CD" = fum."USER_CD"
-      WHERE fvo."VEHICLE_CD" = ANY($1);
-    `;
-  
-    const result = await client.query(query, [vehicleCDs]);
-    return groupByVehicle(result.rows, "master_code");
-  }
-  
-  // ✅ Fetch Blacklisted Drivers using VEHICLE_CD
-  async function fetchBlacklistedDrivers(client, vehicleCDs) {
-    const query = `
-      SELECT fdb."VEHICLE_CD", jsonb_build_object('blacklistedDriver', fum_blacklist."USER_NAME") AS blacklisted_driver
-      FROM "FMS_DRIVER_BLKLST" fdb
-      JOIN "FMS_USR_MST" fum_blacklist ON fdb."USER_CD" = fum_blacklist."USER_CD"
-      WHERE fdb."VEHICLE_CD" = ANY($1);
-    `;
-  
-    const result = await client.query(query, [vehicleCDs]);
-    return groupByVehicle(result.rows, "blacklisted_driver");
-  }
-  
-  // ✅ Utility Function to Group Data by VEHICLE_CD
-  function groupByVehicle(rows, field) {
-    return rows.reduce((acc, row) => {
-      if (!acc[row.VEHICLE_CD]) acc[row.VEHICLE_CD] = [];
-      acc[row.VEHICLE_CD].push(row[field]);
-      return acc;
-    }, {});
-}
 
 const dbConfig = {
     host: '192.168.0.30',
@@ -725,27 +866,5 @@ const dbConfig = {
     }
   };
   
-  // Utility function to add minutes to a time string (HH:MM)
-  function addMinutes(timeStr, minutesToAdd) {
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    const totalMinutes = hours * 60 + minutes + minutesToAdd;
-    const newHours = Math.floor(totalMinutes / 60) % 24;
-    const newMinutes = totalMinutes % 60;
-    return `${newHours.toString().padStart(2, '0')}:${newMinutes.toString().padStart(2, '0')}`;
-  }
-  
-  
-  // Utility function to add minutes to a time string (HH:MM)
-  function addMinutes(timeStr, minutesToAdd) {
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    const totalMinutes = hours * 60 + minutes + minutesToAdd;
-    const newHours = Math.floor(totalMinutes / 60) % 24;
-    const newMinutes = totalMinutes % 60;
-    return `${newHours.toString().padStart(2, '0')}:${newMinutes.toString().padStart(2, '0')}`;
-  }
-  
-  
-  
-  
-  const { Parser } = require('json2csv');
+
   
