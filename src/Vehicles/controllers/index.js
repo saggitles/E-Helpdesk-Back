@@ -124,8 +124,10 @@ exports.getCustomers = async (req, res) => {
       
       if (gmptCode) {
         console.log("Fetching by GMPT code:", gmptCode);
-        const cdQuery = `SELECT "VEHICLE_CD" FROM "FMS_VEHICLE_MST" WHERE "VEHICLE_ID" = $1;`;
-        const cdResult = await client.query(cdQuery, [gmptCode]);
+        // Modified to use LIKE for partial matching
+      const cdQuery = `SELECT "VEHICLE_CD" FROM "FMS_VEHICLE_MST" WHERE "VEHICLE_ID" ILIKE $1;`;
+      // Add wildcards around gmptCode for substring matching
+      const cdResult = await client.query(cdQuery, [`%${gmptCode}%`]);
         vehicleCDs = cdResult.rows.map(row => row.VEHICLE_CD);
         
       } else if (site && site !== 'undefined' && site !== '') {
@@ -266,6 +268,87 @@ exports.getCustomers = async (req, res) => {
   };
 
 
+  // Add this controller function
+exports.getLastDriverLogins = async (req, res) => {
+  const { vehicleCDs } = req.body;
+  
+  if (!vehicleCDs || !Array.isArray(vehicleCDs) || vehicleCDs.length === 0) {
+    return res.status(400).json({ error: "Valid vehicle IDs array is required" });
+  }
+
+  const client = new Client({
+    host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
+    port: 5432,
+    database: "multi",
+    user: "gmtp",
+    password: "MUVQcHz2DqZGHvZh",
+  });
+
+  try {
+    await client.connect();
+    
+    // Make a simplified version that's less likely to error
+    const result = {};
+    
+    for (const vehicleCD of vehicleCDs) {
+      try {
+        // Get just the most recent login for each vehicle
+        const query = `
+          SELECT DISTINCT ON (fcv."DRIVER_ID")
+          CASE 
+            WHEN fum."CONTACT_FIRST_NAME" IS NULL OR fum."CONTACT_LAST_NAME" IS NULL 
+              THEN 'No Driver'
+            ELSE fum."CONTACT_FIRST_NAME" || ' ' || fum."CONTACT_LAST_NAME"
+          END AS driver_name,
+          fcv."DRIVER_ID" as driver_id,
+          TO_CHAR(fcv."SWIPE_TIME", 'DD/MM/YYYY HH24:MI:SS') as login_time,
+          fcv."ACCEPTED" as accepted,
+          fcv."SWIPE_TIME" as raw_timestamp
+        FROM "FMS_CARD_VERIFICATION" fcv
+        LEFT JOIN "FMS_USR_MST" fum ON fcv."DRIVER_ID" = fum."CARD_ID" 
+        WHERE fcv."VEH_CD" = $1
+          AND fcv."ACCEPTED" = TRUE
+        ORDER BY fcv."DRIVER_ID", fcv."SWIPE_TIME" DESC
+        LIMIT 10
+        `;
+        
+        // After getting the results and before adding to the response
+const queryResult = await client.query(query, [vehicleCD]);
+
+// Set empty array as default, then add any results
+result[vehicleCD] = [];
+if (queryResult.rows.length > 0) {
+  // Sort the results by login time (most recent first)
+  const sortedRows = queryResult.rows.sort((a, b) => {
+    // Sort using the raw timestamp
+    return new Date(b.raw_timestamp) - new Date(a.raw_timestamp);
+  });
+  
+  // Remove the raw_timestamp field before sending to frontend
+  const cleanedRows = sortedRows.map(row => {
+    const {  ...cleanRow } = row;
+    return cleanRow;
+  });
+  
+  result[vehicleCD] = cleanedRows;
+  console.log(`Last driver login for vehicle ${vehicleCD}:`, cleanedRows);
+}
+      } catch (err) {
+        console.error(`Error getting last driver login for vehicle ${vehicleCD}: ${err.message}`);
+        // Initialize with empty array if there's an error
+        result[vehicleCD] = [];
+      }
+    }
+    
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error("Error in getLastDriverLogins:", err.message);
+    return res.status(500).json({ error: "Failed to fetch last driver logins", details: err.message });
+  } finally {
+    await client.end();
+  }
+};
+
   exports.clearVehicleCache = async (req, res) => {
     try {
       console.log('Clearing vehicle cache');
@@ -328,7 +411,7 @@ exports.getCustomers = async (req, res) => {
                 LEFT JOIN LATERAL (
                 SELECT 
                   CASE 
-                    WHEN NOW() - ("date_time" AT TIME ZONE 'UTC') > INTERVAL '5 minutes' THEN 'offline'
+                    WHEN NOW() - "utc_time" > INTERVAL '10 minutes' THEN 'offline'
                     ELSE 'online'
                   END AS status
                 FROM "fms_stat_data"
@@ -377,64 +460,68 @@ exports.getCustomers = async (req, res) => {
     
     for (const vehicleCD of vehicleCDs) {
       const query = `
-        WITH "vehicle_user" AS (
-          SELECT "USER_CD"
-          FROM "FMS_USR_VEHICLE_REL"
-          WHERE "VEHICLE_CD" = $1
-        ),
-        "recent_swipes" AS (
-          SELECT "DRIVER_ID", "VEH_CD", "SWIPE_TIME"
-          FROM "FMS_CARD_VERIFICATION"
-          WHERE "VEH_CD" = $1
-            AND "SWIPE_TIME" >= CURRENT_DATE - INTERVAL '2 days'
-        ),
-        "card_users" AS (
-          SELECT
+        
+      WITH "vehicle_user" AS (
+        SELECT "USER_CD"
+        FROM "FMS_USR_VEHICLE_REL"
+        WHERE "VEHICLE_CD" = $1
+      ),
+      "recent_swipes" AS (
+        SELECT "DRIVER_ID", "VEH_CD", "SWIPE_TIME", "ACCEPTED"
+        FROM "FMS_CARD_VERIFICATION"
+        WHERE "VEH_CD" = $1
+          AND "SWIPE_TIME" >= CURRENT_DATE - INTERVAL '3 days'
+      ),
+      "card_users" AS (
+        SELECT
             "rs"."DRIVER_ID",
             "rs"."SWIPE_TIME",
+            "rs"."ACCEPTED",
             "us"."USER_CD",
             "us"."CARD_ID",
             "us"."CARD_PREFIX",
             "us"."CONTACT_FIRST_NAME",
             "us"."CONTACT_LAST_NAME"
-          FROM "recent_swipes" "rs"
-          LEFT JOIN "FMS_USR_MST" "us" ON "us"."CARD_ID" = "rs"."DRIVER_ID"
-        ),
-        "matched_users" AS (
-          SELECT 
+        FROM "recent_swipes" "rs"
+        LEFT JOIN "FMS_USR_MST" "us" ON "us"."CARD_ID" = "rs"."DRIVER_ID"
+      ),
+      "matched_users" AS (
+        SELECT 
             "cu"."DRIVER_ID",
             "cu"."SWIPE_TIME",
+            "cu"."ACCEPTED",
             "cu"."USER_CD",
             "cu"."CARD_PREFIX",
             "cu"."CONTACT_FIRST_NAME",
             "cu"."CONTACT_LAST_NAME"
-          FROM "card_users" "cu"
-          LEFT JOIN "FMS_USER_DEPT_REL" "ur" ON "cu"."USER_CD" = "ur"."USER_CD"
-          WHERE "ur"."CUST_CD" = (SELECT "USER_CD" FROM "vehicle_user" LIMIT 1) OR "cu"."USER_CD" IS NULL
-        )
-        SELECT
-          jsonb_build_object(
-            'driverName', CASE 
-              WHEN "CONTACT_FIRST_NAME" IS NULL OR "CONTACT_LAST_NAME" IS NULL 
+        FROM "card_users" "cu"
+        LEFT JOIN "FMS_USER_DEPT_REL" "ur" ON "cu"."USER_CD" = "ur"."USER_CD"
+        WHERE "ur"."CUST_CD" = (SELECT "USER_CD" FROM "vehicle_user") OR "cu"."USER_CD" IS NULL
+      )
+      SELECT
+        CASE 
+            WHEN "CONTACT_FIRST_NAME" IS NULL OR "CONTACT_LAST_NAME" IS NULL 
                 THEN 'No Driver'
-              ELSE "CONTACT_FIRST_NAME" || ' ' || "CONTACT_LAST_NAME"
-            END,
-            'driverId', "DRIVER_ID",
-            'swipeTime', TO_CHAR("SWIPE_TIME", 'DD/MM/YYYY HH24:MI:SS'),
-            'cardPrefix', "CARD_PREFIX"
-          ) AS swipe_data
-        FROM "matched_users"
-        ORDER BY "SWIPE_TIME" DESC;
-      `;
+            ELSE "CONTACT_FIRST_NAME" || ' ' || "CONTACT_LAST_NAME"
+        END AS driver_name,
+        "DRIVER_ID" as driver_id,
+        "SWIPE_TIME" as login_time,
+        "CARD_PREFIX" as facility_code,
+        "ACCEPTED" as accepted
+      FROM "matched_users"
+      ORDER BY "SWIPE_TIME" DESC;
+    `;
   
       const result = await client.query(query, [vehicleCD]);
+      //console.log('Fetching vehicle logins for vehicle:', vehicleCD, result.rows);
       
-      // Convert the rows to the format you need
-      allLogins[vehicleCD] = result.rows.map(row => row.swipe_data);
+      allLogins[vehicleCD] = result.rows.map(row => row);
     }
     
     return allLogins;
   }
+
+  
   
   // ✅ Fetch Master Codes using VEHICLE_CD
   async function fetchMasterCodes(client, vehicleCDs) {

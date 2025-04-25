@@ -132,7 +132,7 @@ router.post('/master-codes', vehicleControllers.getMasterCodes);
 router.post('/blacklisted-drivers', vehicleControllers.getBlacklistedDrivers);
 router.post('/clear-vehicle-cache', vehicleControllers.clearVehicleCache);
 router.post('/vehicle-logins', vehicleControllers.getVehicleLogins);
-// Version api 2
+router.post('/last-driver-logins', vehicleControllers.getLastDriverLogins);
 
 // Login
 
