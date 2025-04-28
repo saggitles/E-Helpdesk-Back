@@ -191,21 +191,28 @@ exports.getCustomers = async (req, res) => {
       for (const vehicleCD of vehicleCDs) {
         try {
           const query = `
-            SELECT fvo."VEHICLE_CD", jsonb_build_object('masterCodeUser', fum."USER_NAME") AS master_code
-            FROM "FMS_VEHICLE_OVERRIDE" fvo
-            JOIN "FMS_USR_MST" fum ON fvo."USER_CD" = fum."USER_CD"
-            WHERE fvo."VEHICLE_CD" = ANY($1);
+            SELECT 
+                fvo."VEHICLE_CD", 
+                fum."USER_NAME" AS master_code
+            FROM 
+                "FMS_VEHICLE_OVERRIDE" fvo
+            JOIN 
+                "FMS_USR_MST" fum 
+            ON 
+                fvo."USER_CD" = fum."USER_CD"
+            WHERE 
+                fvo."VEHICLE_CD" = ANY($1);
           `;
-          
-          const queryResult = await client.query(query, [vehicleCD]);
-          
+      
+          // Ensure vehicleCD is passed as an array
+          const queryResult = await client.query(query, [[vehicleCD]]);
+      
           result[vehicleCD] = queryResult.rows.map(row => ({
-            master_code_user: row.master_code.masterCodeUser,
-
+            master_code_user: row.master_code,
           }));
         } catch (err) {
           console.error(`Error getting master codes for vehicle ${vehicleCD}: ${err.message}`);
-          // Initialize with empty array if there's an error
+          // Initialize with an empty array if there's an error
           result[vehicleCD] = [];
         }
       }
@@ -251,15 +258,16 @@ exports.getCustomers = async (req, res) => {
             JOIN "FMS_USR_MST" fum_blacklist ON fdb."USER_CD" = fum_blacklist."USER_CD"
             WHERE fdb."VEHICLE_CD" = ANY($1);
           `;
-          
-          const queryResult = await client.query(query, [vehicleCD]);
-          
+
+          // Wrap vehicleCD in an array
+          const queryResult = await client.query(query, [[vehicleCD]]);
+
           result[vehicleCD] = queryResult.rows.map(row => ({
             driver_name: row.blacklisted_driver.blacklistedDriver,
           }));
         } catch (err) {
           console.error(`Error getting blacklisted drivers for vehicle ${vehicleCD}: ${err.message}`);
-          // Initialize with empty array if there's an error
+          // Initialize with an empty array if there's an error
           result[vehicleCD] = [];
         }
       }
@@ -865,6 +873,5 @@ const dbConfig = {
       await client.end();
     }
   };
-  
 
-  
+
