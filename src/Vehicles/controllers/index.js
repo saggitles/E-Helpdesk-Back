@@ -570,7 +570,12 @@ if (queryResult.rows.length > 0) {
                     'site_name', loc."NAME",
                     'has_wifi', ns."veh_cd" IS NOT NULL,
                     'last_dlist_timestamp', dlist."timestamp_s",
-                    'last_preop_timestamp', preop."timestamp_s"
+                    'last_preop_timestamp', preop."timestamp_s",
+                    'idle_polarity', CASE
+                                           WHEN dmr."input_type" = 1 THEN 'High'
+                                           WHEN dmr."input_type" = 0 THEN 'Low'
+                                           ELSE 'Unknown'
+                                         END
                   ) AS vehicle_info
 
                 FROM "FMS_VEHICLE_MST" fvm
@@ -582,18 +587,21 @@ if (queryResult.rows.length > 0) {
                 LEFT JOIN "equipment_website_settings" ews ON ews."gmtp_id" = fvm."VEHICLE_ID"
                 LEFT JOIN "FMS_VEHICLE_TYPE_MST" vt ON vt."VEHICLE_TYPE_CD" = fvm."VEHICLE_TYPE_CD"
                 LEFT JOIN "veh_network_settings" ns ON ns."veh_cd" = fvm."VEHICLE_CD"
+                -- New joins for idle_polarity
+                LEFT JOIN "dealer_model_rel_new" dmr ON dmr."model_id" = fvm."VEHICLE_TYPE_CD"
+                LEFT JOIN "dealer_cust_rel" dcr ON dcr."cust_id" = cust."USER_CD" AND dmr."dealer_id" = dcr."dealer_id"
 
                 -- Estado actual
                 LEFT JOIN LATERAL (
                 SELECT 
-                  CASE 
-                    WHEN NOW() - "utc_time" > INTERVAL '60 minutes' THEN 'offline'
-                    ELSE 'online'
+                  CASE
+                    WHEN (CURRENT_TIMESTAMP AT TIME ZONE EXTRACT(TIMEZONE_HOUR FROM "utc_time")::text) <= ("utc_time" + INTERVAL '20 minutes')
+                      THEN 'online'
+                      ELSE 'offline'
                   END AS status
                 FROM "fms_stat_data"
                 WHERE "vehicle_cd" = fvm."VEHICLE_CD"
-                AND "date_time" > NOW() - INTERVAL '1 day'  
-                ORDER BY "date_time" DESC
+                ORDER BY "utc_time" DESC
                 LIMIT 1
               ) fsd ON TRUE
 
