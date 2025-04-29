@@ -191,9 +191,9 @@ exports.getCustomers = async (req, res) => {
       for (const vehicleCD of vehicleCDs) {
         try {
           const query = `
-            SELECT 
+           SELECT 
                 fvo."VEHICLE_CD", 
-                fum."USER_NAME" AS master_code
+                (fum."CONTACT_FIRST_NAME" || ' ' || fum."CONTACT_LAST_NAME") AS master_code
             FROM 
                 "FMS_VEHICLE_OVERRIDE" fvo
             JOIN 
@@ -253,10 +253,19 @@ exports.getCustomers = async (req, res) => {
       for (const vehicleCD of vehicleCDs) {
         try {
           const query = `
-            SELECT fdb."VEHICLE_CD", jsonb_build_object('blacklistedDriver', fum_blacklist."USER_NAME") AS blacklisted_driver
-            FROM "FMS_DRIVER_BLKLST" fdb
-            JOIN "FMS_USR_MST" fum_blacklist ON fdb."USER_CD" = fum_blacklist."USER_CD"
-            WHERE fdb."VEHICLE_CD" = ANY($1);
+            SELECT 
+                fdb."VEHICLE_CD", 
+                jsonb_build_object(
+                  'blacklistedDriver', 
+                  fum_blacklist."CONTACT_FIRST_NAME" || ' ' || fum_blacklist."CONTACT_LAST_NAME"
+                ) AS blacklisted_driver
+              FROM 
+                "FMS_DRIVER_BLKLST" fdb
+              JOIN 
+                "FMS_USR_MST" fum_blacklist 
+                ON fdb."USER_CD" = fum_blacklist."USER_CD"
+              WHERE 
+                fdb."VEHICLE_CD" = ANY($1);
           `;
 
           // Wrap vehicleCD in an array
