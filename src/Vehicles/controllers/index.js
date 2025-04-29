@@ -484,22 +484,56 @@ exports.getLastDriverLogins = async (req, res) => {
       try {
         // Get just the most recent login for each vehicle
         const query = `
-          SELECT DISTINCT ON (fcv."DRIVER_ID")
-          CASE 
-            WHEN fum."CONTACT_FIRST_NAME" IS NULL OR fum."CONTACT_LAST_NAME" IS NULL 
-              THEN 'No Driver'
-            ELSE fum."CONTACT_FIRST_NAME" || ' ' || fum."CONTACT_LAST_NAME"
-          END AS driver_name,
-          fcv."DRIVER_ID" as driver_id,
-          TO_CHAR(fcv."SWIPE_TIME", 'DD/MM/YYYY HH24:MI:SS') as login_time,
-          fcv."ACCEPTED" as accepted,
-          fcv."SWIPE_TIME" as raw_timestamp
-        FROM "FMS_CARD_VERIFICATION" fcv
-        LEFT JOIN "FMS_USR_MST" fum ON fcv."DRIVER_ID" = fum."CARD_ID" 
-        WHERE fcv."VEH_CD" = $1
-          AND fcv."ACCEPTED" = TRUE
-        ORDER BY fcv."DRIVER_ID", fcv."SWIPE_TIME" DESC
-        LIMIT 10
+                  WITH "vehicle_user" AS (
+            SELECT "USER_CD"
+            FROM "FMS_USR_VEHICLE_REL"
+            WHERE "VEHICLE_CD" = $1
+        ),
+        "recent_swipes" AS (
+            SELECT "DRIVER_ID", "VEH_CD", "SWIPE_TIME", "ACCEPTED"
+            FROM "FMS_CARD_VERIFICATION"
+            WHERE "VEH_CD" = $1
+              AND "ACCEPTED" = TRUE
+        ),
+        "card_users" AS (
+            SELECT
+                "rs"."DRIVER_ID",
+                "rs"."SWIPE_TIME",
+                "rs"."ACCEPTED",
+                "us"."USER_CD",
+                "us"."CARD_ID",
+                "us"."CARD_PREFIX",
+                "us"."CONTACT_FIRST_NAME",
+                "us"."CONTACT_LAST_NAME"
+            FROM "recent_swipes" "rs"
+            LEFT JOIN "FMS_USR_MST" "us" ON "us"."CARD_ID" = "rs"."DRIVER_ID"
+        ),
+        "matched_users" AS (
+            SELECT 
+                "cu"."DRIVER_ID",
+                "cu"."SWIPE_TIME",
+                "cu"."ACCEPTED",
+                "cu"."USER_CD",
+                "cu"."CARD_PREFIX",
+                "cu"."CONTACT_FIRST_NAME",
+                "cu"."CONTACT_LAST_NAME"
+            FROM "card_users" "cu"
+            LEFT JOIN "FMS_USER_DEPT_REL" "ur" ON "cu"."USER_CD" = "ur"."USER_CD"
+            WHERE "ur"."CUST_CD" = (SELECT "USER_CD" FROM "vehicle_user") OR "cu"."USER_CD" IS NULL
+        )
+        SELECT
+            CASE 
+                WHEN "CONTACT_FIRST_NAME" IS NULL OR "CONTACT_LAST_NAME" IS NULL 
+                    THEN 'No Driver'
+                ELSE "CONTACT_FIRST_NAME" || ' ' || "CONTACT_LAST_NAME"
+            END AS driver_name,
+            "DRIVER_ID" as driver_id,
+            TO_CHAR("SWIPE_TIME", 'DD/MM/YYYY HH24:MI:SS') as login_time,
+            "CARD_PREFIX" as facility_code,
+            "ACCEPTED" as accepted
+        FROM "matched_users"
+        ORDER BY "SWIPE_TIME" DESC
+        LIMIT 10;
         `;
         
 const queryResult = await client.query(query, [vehicleCD]);
