@@ -548,101 +548,115 @@ if (queryResult.rows.length > 0) {
   
   // ✅ Fetch Basic Vehicle Info
   async function fetchVehicleInfo(client, vehicleCDs) {
+
+      // Create a cache key from the sorted vehicle IDs
+  const cacheKey = `vehicles_${[...vehicleCDs].sort().join('_')}`;
+  
+  // Check if we have a cached response
+  const cachedData = vehicleCache.get(cacheKey);
+  if (cachedData) {
+    console.log('Cache hit for vehicles:', vehicleCDs);
+    return cachedData;
+  }
+
+    // If not in cache, execute your query...
+    console.log('Cache miss for vehicles:', vehicleCDs);
+
     const query = `
-                  SELECT DISTINCT ON (fvm."VEHICLE_CD")
-                  fvm."VEHICLE_CD",
-                  jsonb_build_object(
-                    'vehicle_name', ev."hire_no",
-                    'serial_number', ev."serial_no",
-                    'gmpt_code', fvm."VEHICLE_ID",
-                    'firmware_version', ev."firmware_ver",
-                    'screen_version', ev."product_type",
-                    'expansion_version', ev."exp_mod_ver",
-                    'last_connection', TO_CHAR(fvm."LAST_EOS", 'DD/MM/YYYY HH24:MI'),
-                    'department', fdm."DEPT_NAME",
-                    'vor_setting', fvm."vor_setting",
-                    'lockout_code', fvm."lockout_code",
-                    'impact_lockout', fvm."IMPACT_LOCKOUT",
-                    'survey_timeout', fvm."survey_timeout",
-                    'seat_idle', fvm."seat_idle",
-                    'red_impact_threshold', ROUND(CAST(0.00388 * SQRT(GREATEST(fvm."FSSS_BASE", 0) * GREATEST(fvm."FSSSMULTI", 0) * 10) AS NUMERIC), 3),
-                    'impact_recalibration_date', TO_CHAR(ews."impact_recalibration_date", 'DD/MM/YYYY HH24:MI'),
-                    'preop_schedule', ews."preop_schedule",
-                    'sim_number', fvm."CCID",
-                    'vehicle_type', fvm."VEHICLE_TYPE_CD",
-                    'vehicle_model', vt."VEHICLE_TYPE",
-                    'status', fsd."status",
-                    'full_lockout_enabled', fvm."full_lockout_enabled",
-                    'full_lockout_timeout', fvm."full_lockout_timeout",
-                    'customer_name', cust."USER_NAME",
-                    'site_name', loc."NAME",
-                    'has_wifi', ns."veh_cd" IS NOT NULL,
-                    'last_dlist_timestamp', dlist."timestamp_s",
-                    'last_preop_timestamp', preop."timestamp_s",
-                    'idle_polarity', CASE
-                                           WHEN dmr."input_type" = 1 THEN 'High'
-                                           WHEN dmr."input_type" = 0 THEN 'Low'
-                                           ELSE 'Unknown'
-                                         END
-                  ) AS vehicle_info
-
-                FROM "FMS_VEHICLE_MST" fvm
-                LEFT JOIN "equipment_view" ev ON ev."gmtp_id" = fvm."VEHICLE_ID"
-                LEFT JOIN "FMS_USR_VEHICLE_REL" fuvr ON fuvr."VEHICLE_CD" = fvm."VEHICLE_CD"
-                LEFT JOIN "FMS_DEPT_MST" fdm ON fdm."DEPT_CD" = fuvr."DEPT_CD"
-                LEFT JOIN "FMS_CUST_MST" cust ON cust."USER_CD" = fuvr."USER_CD"
-                LEFT JOIN "FMS_LOC_MST" loc ON loc."LOCATION_CD" = fuvr."LOC_CD"
-                LEFT JOIN "equipment_website_settings" ews ON ews."gmtp_id" = fvm."VEHICLE_ID"
-                LEFT JOIN "FMS_VEHICLE_TYPE_MST" vt ON vt."VEHICLE_TYPE_CD" = fvm."VEHICLE_TYPE_CD"
-                LEFT JOIN "veh_network_settings" ns ON ns."veh_cd" = fvm."VEHICLE_CD"
-                -- New joins for idle_polarity
-                LEFT JOIN "dealer_model_rel_new" dmr ON dmr."model_id" = fvm."VEHICLE_TYPE_CD"
-                LEFT JOIN "dealer_cust_rel" dcr ON dcr."cust_id" = cust."USER_CD" AND dmr."dealer_id" = dcr."dealer_id"
-
-                -- Estado actual
-                LEFT JOIN LATERAL (
-                SELECT 
-                  CASE
-                    WHEN (CURRENT_TIMESTAMP AT TIME ZONE EXTRACT(TIMEZONE_HOUR FROM "utc_time")::text) <= ("utc_time" + INTERVAL '20 minutes')
-                      THEN 'online'
-                      ELSE 'offline'
-                  END AS status
-                FROM "fms_stat_data"
-                WHERE "vehicle_cd" = fvm."VEHICLE_CD"
-                ORDER BY "utc_time" DESC
-                LIMIT 1
-              ) fsd ON TRUE
-
-                -- Último dlist.txt
-                LEFT JOIN LATERAL (
-                  SELECT TO_CHAR("timestamp_s", 'DD/MM/YYYY HH24:MI') AS "timestamp_s"
-                  FROM "outgoing_stat"
-                  WHERE "destination_s" = fvm."VEHICLE_ID" 
-                    AND "message_s" ILIKE '%dlist.txt%'
-                  ORDER BY "timestamp_s" DESC
-                  LIMIT 1
-                ) dlist ON TRUE
-
-                -- Último PREOP.TXT
-                LEFT JOIN LATERAL (
-                  SELECT TO_CHAR("timestamp_s", 'DD/MM/YYYY HH24:MI') AS "timestamp_s"
-                  FROM "outgoing_stat"
-                  WHERE "destination_s"= fvm."VEHICLE_ID"
-                    AND "message_s" ILIKE '%PREOP%'
-                  ORDER BY "timestamp_s" DESC
-                  LIMIT 1
-                ) preop ON TRUE
-
-                WHERE fvm."VEHICLE_CD" = ANY($1)
-                ORDER BY fvm."VEHICLE_CD", fuvr."USER_CD" NULLS LAST;
-
-
-
+      WITH filtered_vehicles AS (
+        SELECT *
+        FROM "FMS_VEHICLE_MST"
+        WHERE "VEHICLE_CD" = ANY($1)
+      )
+      SELECT DISTINCT ON (fvm."VEHICLE_CD")
+        fvm."VEHICLE_CD",
+        jsonb_build_object(
+          'vehicle_name', ev."hire_no",
+          'serial_number', ev."serial_no",
+          'gmpt_code', fvm."VEHICLE_ID",
+          'firmware_version', ev."firmware_ver",
+          'screen_version', ev."product_type",
+          'expansion_version', ev."exp_mod_ver",
+          'last_connection', TO_CHAR(fvm."LAST_EOS", 'DD/MM/YYYY HH24:MI'),
+          'department', fdm."DEPT_NAME",
+          'vor_setting', fvm."vor_setting",
+          'lockout_code', fvm."lockout_code",
+          'impact_lockout', fvm."IMPACT_LOCKOUT",
+          'survey_timeout', fvm."survey_timeout",
+          'seat_idle', fvm."seat_idle",
+          'red_impact_threshold', ROUND(CAST(0.00388 * SQRT(GREATEST(fvm."FSSS_BASE", 0) * GREATEST(fvm."FSSSMULTI", 0) * 10) AS NUMERIC), 3),
+          'impact_recalibration_date', TO_CHAR(ews."impact_recalibration_date", 'DD/MM/YYYY HH24:MI'),
+          'preop_schedule', ews."preop_schedule",
+          'sim_number', fvm."CCID",
+          'vehicle_type', fvm."VEHICLE_TYPE_CD",
+          'vehicle_model', vt."VEHICLE_TYPE",
+          'status', fsd."status",
+          'full_lockout_enabled', fvm."full_lockout_enabled",
+          'full_lockout_timeout', fvm."full_lockout_timeout",
+          'customer_name', cust."USER_NAME",
+          'site_name', loc."NAME",
+          'has_wifi', ns."veh_cd" IS NOT NULL,
+          'last_dlist_timestamp', dlist."timestamp_s",
+          'last_preop_timestamp', preop."timestamp_s",
+          'idle_polarity', CASE
+                               WHEN dmr."input_type" = 1 THEN 'High'
+                               WHEN dmr."input_type" = 0 THEN 'Low'
+                               ELSE 'Unknown'
+                            END
+        ) AS vehicle_info
+      FROM filtered_vehicles fvm
+      LEFT JOIN "equipment_view" ev ON ev."gmtp_id" = fvm."VEHICLE_ID"
+      LEFT JOIN "FMS_USR_VEHICLE_REL" fuvr ON fuvr."VEHICLE_CD" = fvm."VEHICLE_CD"
+      LEFT JOIN "FMS_DEPT_MST" fdm ON fdm."DEPT_CD" = fuvr."DEPT_CD"
+      LEFT JOIN "FMS_CUST_MST" cust ON cust."USER_CD" = fuvr."USER_CD"
+      LEFT JOIN "FMS_LOC_MST" loc ON loc."LOCATION_CD" = fuvr."LOC_CD"
+      LEFT JOIN "equipment_website_settings" ews ON ews."gmtp_id" = fvm."VEHICLE_ID"
+      LEFT JOIN "FMS_VEHICLE_TYPE_MST" vt ON vt."VEHICLE_TYPE_CD" = fvm."VEHICLE_TYPE_CD"
+      LEFT JOIN "veh_network_settings" ns ON ns."veh_cd" = fvm."VEHICLE_CD"
+      LEFT JOIN "dealer_model_rel_new" dmr ON dmr."model_id" = fvm."VEHICLE_TYPE_CD"
+      LEFT JOIN "dealer_cust_rel" dcr ON dcr."cust_id" = cust."USER_CD" AND dmr."dealer_id" = dcr."dealer_id"
+  
+      -- Estado actual
+      LEFT JOIN LATERAL (
+        SELECT 
+          CASE
+            WHEN (CURRENT_TIMESTAMP AT TIME ZONE EXTRACT(TIMEZONE_HOUR FROM "utc_time")::text) <= ("utc_time" + INTERVAL '20 minutes')
+              THEN 'online'
+              ELSE 'offline'
+          END AS status
+        FROM "fms_stat_data"
+        WHERE "vehicle_cd" = fvm."VEHICLE_CD"
+        AND (CURRENT_TIMESTAMP AT TIME ZONE EXTRACT(TIMEZONE_HOUR FROM "utc_time")::text) > ("utc_time" - INTERVAL '21 minutes')
+        ORDER BY "utc_time" DESC
+        LIMIT 1
+      ) fsd ON TRUE
+  
+      -- Último dlist.txt
+      LEFT JOIN LATERAL (
+        SELECT TO_CHAR("timestamp_s", 'DD/MM/YYYY HH24:MI') AS "timestamp_s"
+        FROM "outgoing_stat"
+        WHERE "destination_s" = fvm."VEHICLE_ID" 
+          AND "message_s" ILIKE '%dlist.txt%'
+        ORDER BY "timestamp_s" DESC
+        LIMIT 1
+      ) dlist ON TRUE
+  
+      -- Último PREOP.TXT
+      LEFT JOIN LATERAL (
+        SELECT TO_CHAR("timestamp_s", 'DD/MM/YYYY HH24:MI') AS "timestamp_s"
+        FROM "outgoing_stat"
+        WHERE "destination_s"= fvm."VEHICLE_ID"
+          AND "message_s" ILIKE '%PREOP%'
+        ORDER BY "timestamp_s" DESC
+        LIMIT 1
+      ) preop ON TRUE
+  
+      ORDER BY fvm."VEHICLE_CD", fuvr."USER_CD" NULLS LAST;
     `;
   
     const result = await client.query(query, [vehicleCDs]);
-    console.log('Fetching new vehicles...',result.rows)
-  
+    // Store result in cache before returning
+    vehicleCache.set(cacheKey, result.rows);
     return result.rows;
   }
 
@@ -662,7 +676,7 @@ if (queryResult.rows.length > 0) {
         SELECT "DRIVER_ID", "VEH_CD", "SWIPE_TIME", "ACCEPTED"
         FROM "FMS_CARD_VERIFICATION"
         WHERE "VEH_CD" = $1
-          AND "SWIPE_TIME" >= CURRENT_DATE - INTERVAL '3 days'
+          AND "SWIPE_TIME" >= CURRENT_DATE - INTERVAL '7 days'
       ),
       "card_users" AS (
         SELECT
