@@ -582,116 +582,200 @@ if (queryResult.rows.length > 0) {
   
   // ✅ Fetch Basic Vehicle Info
   async function fetchVehicleInfo(client, vehicleCDs) {
-
-      // Create a cache key from the sorted vehicle IDs
-  const cacheKey = `vehicles_${[...vehicleCDs].sort().join('_')}`;
-  
-  // Check if we have a cached response
-  const cachedData = vehicleCache.get(cacheKey);
-  if (cachedData) {
-    console.log('Cache hit for vehicles:', vehicleCDs);
-    return cachedData;
-  }
-
-    // If not in cache, execute your query...
-    console.log('Cache miss for vehicles:', vehicleCDs);
-
-    const query = `
-      WITH filtered_vehicles AS (
-        SELECT *
-        FROM "FMS_VEHICLE_MST"
-        WHERE "VEHICLE_CD" = ANY($1)
-      )
-      SELECT DISTINCT ON (fvm."VEHICLE_CD")
-        fvm."VEHICLE_CD",
-        jsonb_build_object(
-          'vehicle_name', ev."hire_no",
-          'serial_number', ev."serial_no",
-          'gmpt_code', fvm."VEHICLE_ID",
-          'firmware_version', ev."firmware_ver",
-          'screen_version', ev."product_type",
-          'expansion_version', ev."exp_mod_ver",
-          'last_connection', TO_CHAR(fvm."LAST_EOS", 'DD/MM/YYYY HH24:MI'),
-          'department', fdm."DEPT_NAME",
-          'vor_setting', fvm."vor_setting",
-          'lockout_code', fvm."lockout_code",
-          'impact_lockout', fvm."IMPACT_LOCKOUT",
-          'survey_timeout', fvm."survey_timeout",
-          'seat_idle', fvm."seat_idle",
-          'red_impact_threshold', ROUND(CAST(0.00388 * SQRT(GREATEST(fvm."FSSS_BASE", 0) * GREATEST(fvm."FSSSMULTI", 0) * 10) AS NUMERIC), 3),
-          'impact_recalibration_date', TO_CHAR(ews."impact_recalibration_date", 'DD/MM/YYYY HH24:MI'),
-          'preop_schedule', ews."preop_schedule",
-          'sim_number', fvm."CCID",
-          'vehicle_type', fvm."VEHICLE_TYPE_CD",
-          'vehicle_model', vt."VEHICLE_TYPE",
-          'status', fsd."status",
-          'full_lockout_enabled', fvm."full_lockout_enabled",
-          'full_lockout_timeout', fvm."full_lockout_timeout",
-          'customer_name', cust."USER_NAME",
-          'site_name', loc."NAME",
-          'has_wifi', ns."veh_cd" IS NOT NULL,
-          'last_dlist_timestamp', dlist."timestamp_s",
-          'last_preop_timestamp', preop."timestamp_s",
-          'idle_polarity', CASE
-                               WHEN dmr."input_type" = 1 THEN 'High'
-                               WHEN dmr."input_type" = 0 THEN 'Low'
-                               ELSE 'Unknown'
-                            END
-        ) AS vehicle_info
-      FROM filtered_vehicles fvm
-      LEFT JOIN "equipment_view" ev ON ev."gmtp_id" = fvm."VEHICLE_ID"
-      LEFT JOIN "FMS_USR_VEHICLE_REL" fuvr ON fuvr."VEHICLE_CD" = fvm."VEHICLE_CD"
-      LEFT JOIN "FMS_DEPT_MST" fdm ON fdm."DEPT_CD" = fuvr."DEPT_CD"
-      LEFT JOIN "FMS_CUST_MST" cust ON cust."USER_CD" = fuvr."USER_CD"
-      LEFT JOIN "FMS_LOC_MST" loc ON loc."LOCATION_CD" = fuvr."LOC_CD"
-      LEFT JOIN "equipment_website_settings" ews ON ews."gmtp_id" = fvm."VEHICLE_ID"
-      LEFT JOIN "FMS_VEHICLE_TYPE_MST" vt ON vt."VEHICLE_TYPE_CD" = fvm."VEHICLE_TYPE_CD"
-      LEFT JOIN "veh_network_settings" ns ON ns."veh_cd" = fvm."VEHICLE_CD"
-      LEFT JOIN "dealer_model_rel_new" dmr ON dmr."model_id" = fvm."VEHICLE_TYPE_CD"
-      LEFT JOIN "dealer_cust_rel" dcr ON dcr."cust_id" = cust."USER_CD" AND dmr."dealer_id" = dcr."dealer_id"
-  
-      -- Estado actual
-      LEFT JOIN LATERAL (
-        SELECT 
-          CASE
-            WHEN (CURRENT_TIMESTAMP AT TIME ZONE EXTRACT(TIMEZONE_HOUR FROM "utc_time")::text) <= ("utc_time" + INTERVAL '20 minutes')
-              THEN 'online'
-              ELSE 'offline'
-          END AS status
-        FROM "fms_stat_data"
-        WHERE "vehicle_cd" = fvm."VEHICLE_CD"
-        AND (CURRENT_TIMESTAMP AT TIME ZONE EXTRACT(TIMEZONE_HOUR FROM "utc_time")::text) > ("utc_time" - INTERVAL '21 minutes')
-        ORDER BY "utc_time" DESC
-        LIMIT 1
-      ) fsd ON TRUE
-  
-      -- Último dlist.txt
-      LEFT JOIN LATERAL (
-        SELECT TO_CHAR("timestamp_s", 'DD/MM/YYYY HH24:MI') AS "timestamp_s"
-        FROM "outgoing_stat"
-        WHERE "destination_s" = fvm."VEHICLE_ID" 
-          AND "message_s" ILIKE '%dlist.txt%'
-        ORDER BY "timestamp_s" DESC
-        LIMIT 1
-      ) dlist ON TRUE
-  
-      -- Último PREOP.TXT
-      LEFT JOIN LATERAL (
-        SELECT TO_CHAR("timestamp_s", 'DD/MM/YYYY HH24:MI') AS "timestamp_s"
-        FROM "outgoing_stat"
-        WHERE "destination_s"= fvm."VEHICLE_ID"
-          AND "message_s" ILIKE '%PREOP%'
-        ORDER BY "timestamp_s" DESC
-        LIMIT 1
-      ) preop ON TRUE
-  
-      ORDER BY fvm."VEHICLE_CD", fuvr."USER_CD" NULLS LAST;
-    `;
-  
-    const result = await client.query(query, [vehicleCDs]);
-    // Store result in cache before returning
-    vehicleCache.set(cacheKey, result.rows);
-    return result.rows;
+    try {
+      // Normalize the vehicleCDs input
+      let vehicleArray;
+      
+      // Handle different input types
+      if (Array.isArray(vehicleCDs)) {
+        vehicleArray = vehicleCDs;
+      } else if (typeof vehicleCDs === 'string') {
+        // Check if it's a stringified JSON array
+        if (vehicleCDs.startsWith('{') || vehicleCDs.startsWith('[')) {
+          try {
+            // Try to parse the string as JSON
+            const normalizedStr = vehicleCDs.replace(/{/g, '[').replace(/}/g, ']');
+            vehicleArray = JSON.parse(normalizedStr);
+          } catch (e) {
+            // If parsing fails, assume it's a single ID
+            vehicleArray = [vehicleCDs];
+          }
+        } else {
+          // It's a single ID or comma-separated list
+          vehicleArray = vehicleCDs.split(',');
+        }
+      } else {
+        // If it's not an array or string, wrap it
+        vehicleArray = [vehicleCDs];
+      }
+      
+      // Ensure all elements are integers
+      const vehicleIds = vehicleArray
+        .map(id => parseInt(id.toString().trim(), 10))
+        .filter(id => !isNaN(id));
+      
+      if (vehicleIds.length === 0) {
+        console.log('No valid vehicle IDs provided');
+        return [];
+      }
+      
+      // Create cache key from integers
+      const cacheKey = `vehicles_${[...vehicleIds].sort().join('_')}`;
+      
+      // Check cache
+      const cachedData = vehicleCache.get(cacheKey);
+      if (cachedData) {
+        console.log('Cache hit for vehicles:', vehicleIds);
+        return cachedData;
+      }
+      
+      // If not in cache, execute your query
+      console.log('Cache miss for vehicles:', vehicleIds);
+      
+      // Use the IN operator for multiple IDs
+      const placeholders = vehicleIds.map((_, i) => `$${i + 1}`).join(',');
+      
+      const query = `
+        WITH "filtered_vehicles" AS (
+          SELECT *
+          FROM "FMS_VEHICLE_MST"
+          WHERE "VEHICLE_CD" IN (${placeholders})
+        )
+        SELECT DISTINCT ON (fvm."VEHICLE_CD")
+          fvm."VEHICLE_CD",
+          jsonb_build_object(
+            'status', fsd."status",
+            'has_wifi', ns."veh_cd" IS NOT NULL,
+            'gmpt_code', fvm."VEHICLE_ID",
+            'seat_idle', fvm."seat_idle",
+            'site_name', loc."NAME",
+            'department', fdm."DEPT_NAME",
+            'sim_number', fvm."CCID",
+            'vor_setting', fvm."vor_setting",
+            'lockout_code', fvm."lockout_code",
+            'vehicle_name', fvm."HIRE_NO",
+            'vehicle_type', fvm."VEHICLE_TYPE_CD",
+            'customer_name', cust."USER_NAME",
+            'idle_polarity', CASE
+                                 WHEN dmr."input_type" = 1 THEN 'High'
+                                 WHEN dmr."input_type" = 0 THEN 'Low'
+                                 ELSE 'Unknown'
+                            END,
+            'serial_number', fvm."SERIAL_NO",
+            'vehicle_model', vt."VEHICLE_TYPE",
+            'impact_lockout', fvm."IMPACT_LOCKOUT",
+            'preop_schedule',
+                CASE
+                    WHEN chk."alerttype" = 3 THEN 'DRIVER BASED'
+                    WHEN chk."alerttype" = 2 THEN 'TIME BASED'
+                    ELSE 'N/A'
+                END,
+            'screen_version',
+                CASE
+                    WHEN ver."CURR_VER" IS NULL THEN 'unknown'
+                    WHEN length(ver."CURR_VER"::text) >= 15 THEN
+                      CASE
+                        WHEN ((hex_to_bigint(ver."CURR_VER")::bit(64) & B'0000000000000000111111111111111100000000000000000000000000000000') >> 32)::bigint = 1 THEN 'MK1'
+                        WHEN ((hex_to_bigint(ver."CURR_VER")::bit(64) & B'0000000000000000111111111111111100000000000000000000000000000000') >> 32)::bigint = 2 THEN 'MK2'
+                        WHEN ((hex_to_bigint(ver."CURR_VER")::bit(64) & B'0000000000000000111111111111111100000000000000000000000000000000') >> 32)::bigint = 5 THEN 'MK3'
+                        ELSE 'unknown'
+                      END
+                    ELSE
+                      CASE
+                        WHEN ((hex_to_int(ver."CURR_VER")::bit(24) & B'000000000011000000000000') >> 12)::int = 1 THEN 'MK1'
+                        WHEN ((hex_to_int(ver."CURR_VER")::bit(24) & B'000000000011000000000000') >> 12)::int = 2 THEN 'MK2'
+                        WHEN ((hex_to_int(ver."CURR_VER")::bit(24) & B'000000000011000000000000') >> 12)::int = 5 THEN 'MK3'
+                        ELSE 'unknown'
+                      END
+                END,
+            'survey_timeout', fvm."survey_timeout",
+            'last_connection', TO_CHAR(fvm."LAST_EOS", 'DD/MM/YYYY HH24:MI'),
+            'firmware_version', 
+                CASE
+                    WHEN ver."MK3DBG" IS NOT NULL THEN ver."MK3DBG"::text
+                    WHEN ver."CURR_VER" IS NULL THEN 'unknown'
+                    WHEN length(ver."CURR_VER"::text) >= 15 THEN
+                      (((((hex_to_bigint(ver."CURR_VER")::bit(64) & B'0000000000000000111111111111111100000000000000000000000000000000') >> 32)::bigint)::text)
+                      || '.' ||
+                      ((hex_to_bigint(ver."CURR_VER")::bit(64) & B'0000000000000000000000000000000011111111111111110000000000000000') >> 16)::bigint::text
+                      || '.' ||
+                      (hex_to_bigint(ver."CURR_VER")::bit(64) & B'0000000000000000000000000000000000000000000000001111111111111111')::bigint::text)
+                    ELSE
+                      (((((hex_to_int(ver."CURR_VER")::bit(24) & B'000000000011000000000000') >> 12)::int)::text)
+                      || '.' ||
+                      ((hex_to_int(ver."CURR_VER")::bit(24) & B'000000000000111111000000') >> 6)::int::text
+                      || '.' ||
+                      (hex_to_int(ver."CURR_VER")::bit(24) & B'000000000000000000111111')::int::text)
+                END,
+            'expansion_version', ver."EXPMOD_VER",
+            'full_lockout_enabled', fvm."full_lockout_enabled",
+            'full_lockout_timeout', fvm."full_lockout_timeout",
+            'last_dlist_timestamp', dlist."timestamp_s",
+            'last_preop_timestamp', preop."timestamp_s",
+            'red_impact_threshold', ROUND(CAST(0.00388 * SQRT(GREATEST(fvm."FSSS_BASE", 0) * GREATEST(fvm."FSSSMULTI", 0) * 10) AS NUMERIC), 3),
+            'impact_recalibration_date', fvm."CALIBRATED_RESET"
+          ) AS "vehicle_info"
+        FROM "filtered_vehicles" fvm
+        LEFT JOIN "FMS_USR_VEHICLE_REL" fuvr ON fuvr."VEHICLE_CD" = fvm."VEHICLE_CD"
+        LEFT JOIN "FMS_DEPT_MST" fdm ON fdm."DEPT_CD" = fuvr."DEPT_CD"
+        LEFT JOIN "FMS_CUST_MST" cust ON cust."USER_CD" = fuvr."USER_CD"
+        LEFT JOIN "FMS_LOC_MST" loc ON loc."LOCATION_CD" = fuvr."LOC_CD"
+        LEFT JOIN "FMS_VEHICLE_TYPE_MST" vt ON vt."VEHICLE_TYPE_CD" = fvm."VEHICLE_TYPE_CD"
+        LEFT JOIN "veh_network_settings" ns ON ns."veh_cd" = fvm."VEHICLE_CD"
+        LEFT JOIN "dealer_model_rel_new" dmr ON dmr."model_id" = fvm."VEHICLE_TYPE_CD"
+        LEFT JOIN "dealer_cust_rel" dcr ON dcr."cust_id" = cust."USER_CD" AND dmr."dealer_id" = dcr."dealer_id"
+        LEFT JOIN "fms_can_rules_mapping" can ON can."crc"::text = fvm."CRC"::text
+        LEFT JOIN "op_chk_unitalertcondition" chk ON chk."gmtp_id"::text = fvm."VEHICLE_ID"::text
+        LEFT JOIN "FMS_VER_STORE" ver ON ver."VEHICLE_CD" = fvm."VEHICLE_CD"
+        
+        -- Status calculado con TZ
+        LEFT JOIN LATERAL (
+          SELECT 
+            CASE
+              WHEN (CURRENT_TIMESTAMP AT TIME ZONE EXTRACT(TIMEZONE_HOUR FROM "utc_time")::text) <= ("utc_time" + INTERVAL '20 minutes')
+                THEN 'online'
+                ELSE 'offline'
+            END AS "status"
+          FROM "fms_stat_data"
+          WHERE "vehicle_cd" = fvm."VEHICLE_CD"
+            AND (CURRENT_TIMESTAMP AT TIME ZONE EXTRACT(TIMEZONE_HOUR FROM "utc_time")::text) > ("utc_time" - INTERVAL '21 minutes')
+          ORDER BY "utc_time" DESC
+          LIMIT 1
+        ) fsd ON TRUE
+        
+        -- Último dlist.txt
+        LEFT JOIN LATERAL (
+          SELECT TO_CHAR("timestamp_s", 'DD/MM/YYYY HH24:MI') AS "timestamp_s"
+          FROM "outgoing_stat"
+          WHERE "destination_s" = fvm."VEHICLE_ID"
+            AND "message_s" ILIKE '%dlist.txt%'
+          ORDER BY "timestamp_s" DESC
+          LIMIT 1
+        ) dlist ON TRUE
+        
+        -- Último PREOP.TXT
+        LEFT JOIN LATERAL (
+          SELECT TO_CHAR("timestamp_s", 'DD/MM/YYYY HH24:MI') AS "timestamp_s"
+          FROM "outgoing_stat"
+          WHERE "destination_s" = fvm."VEHICLE_ID"
+            AND "message_s" ILIKE '%PREOP%'
+          ORDER BY "timestamp_s" DESC
+          LIMIT 1
+        ) preop ON TRUE
+        
+        ORDER BY fvm."VEHICLE_CD", fuvr."USER_CD" NULLS LAST;
+      `;
+    
+      // Pass array of IDs as parameters
+      const result = await client.query(query, vehicleIds);
+      
+      // Store result in cache before returning
+      vehicleCache.set(cacheKey, result.rows);
+      return result.rows;
+    } catch (err) {
+      console.error("Database Query Failed:", err.message);
+      return [];
+    }
   }
 
   async function fetchVehicleLogins(client, vehicleCDs) {
@@ -846,12 +930,16 @@ const dbConfig = {
     const site = req.query.site; // optional
     const gmptCode = req.query.gmptCode; // optional
   
-    if (!time1 || !time2 || !customer) {
-      return res.status(400).json({ error: 'Missing required snapshot times or customer filter' });
+    if (!time1 || !time2) {
+      return res.status(400).json({ error: 'Missing required snapshot times' });
     }
   
-    // Convert date objects to the expected string format.
-    // If date1 and date2 are Date objects, format them; if they're strings, you may need to parse them first.
+    // Check that at least one filter is provided
+    if (!customer && !gmptCode) {
+      return res.status(400).json({ error: 'At least one filter (customer or gmptCode) is required' });
+    }
+  
+    // Convert date objects to the expected string format
     const formattedDate1 = format(new Date(date1), 'yyyy-MM-dd');
     const formattedDate2 = format(new Date(date2), 'yyyy-MM-dd');
   
@@ -859,30 +947,48 @@ const dbConfig = {
     try {
       await client.connect();
   
-      const customerInt = parseInt(customer);
-      const queryParams = [formattedDate1, formattedDate2, time1, time2, customerInt];
-      // Build extra conditions
-      let extraConditions = ` AND "cust_id" = $5`;
-      if (site) {
-        const siteInt = parseInt(site);
-        extraConditions += ` AND "site_id" = $6`;
-        queryParams.push(siteInt);
-      }
+      // Initialize query parameters with time and date values
+      const queryParams = [formattedDate1, formattedDate2, time1, time2];
+      
+      // Build filter conditions based on priority:
+      // 1. If gmptCode is provided, only use gmptCode filter
+      // 2. Otherwise use customer filter + optional site filter
+      let extraConditions = '';
+      
       if (gmptCode) {
-        extraConditions += ` AND "gmptCode" = $${queryParams.length + 1}`;
-        queryParams.push(gmptCode);
+        // Prioritize GMPT code filter
+        extraConditions = ` AND "gmptCode" ILIKE $5`;
+        queryParams.push(`%${gmptCode}%`); // Use ILIKE with wildcards for partial matching
+        console.log('Filtering by GMPT Code:', gmptCode);
+      } else {
+        // Use customer filter
+        const customerInt = parseInt(customer);
+        extraConditions = ` AND "cust_id" = $5`;
+        queryParams.push(customerInt);
+        console.log('Filtering by Customer:', customerInt);
+        
+        // Add site filter if provided
+        if (site) {
+          const siteInt = parseInt(site);
+          extraConditions += ` AND "site_id" = $6`;
+          queryParams.push(siteInt);
+          console.log('Filtering by Site:', siteInt);
+        }
       }
       
-      console.log('costumer',customer)
-      console.log('site',site)
-      console.log('gmptCode',gmptCode)
-      console.log('date1',date1)
-      console.log('time1',time1)
-      console.log('date2',date2)
-      console.log('time2',time2)
-      
+      console.log('Query parameters:', {
+        customer,
+        site,
+        gmptCode,
+        date1,
+        time1,
+        date2,
+        time2,
+        extraConditions,
+        queryParams
+      });
   
-      // Query snapshots within the time ranges (each time range is start time plus 58 minutes)
+      // Query snapshots within the time ranges
       const query = `
         SELECT DISTINCT ON (vehicle_cd, snapshot_time) *
         FROM (
@@ -899,12 +1005,10 @@ const dbConfig = {
                 ${extraConditions}
         ) AS sub
         ORDER BY vehicle_cd, snapshot_time, query_execution_date;
-  
-  
-  
       `;
+      
       const result = await client.query(query, queryParams);
-      console.log('Query result rows:', result.rows);
+      console.log(`Query returned ${result.rows.length} results`);
   
       const pairedSnapshots = result.rows.reduce((acc, row) => {
         const vCode = row.vehicle_cd;
@@ -915,12 +1019,11 @@ const dbConfig = {
           acc[vCode].before = row;
         } else if (row.snapshot_time === time2) {
           acc[vCode].after = row;
-  
         }
         return acc;
       }, {});
   
-      console.log('Paired snapshots by vehicle_cd:', pairedSnapshots);
+      console.log(`Paired ${Object.keys(pairedSnapshots).length} vehicle snapshots`);
       res.json(pairedSnapshots);
     } catch (error) {
       console.error('Error fetching snapshots:', error.message);
