@@ -134,6 +134,7 @@ router.post('/clear-vehicle-cache', vehicleControllers.clearVehicleCache);
 router.post('/vehicle-logins', vehicleControllers.getVehicleLogins);
 router.post('/last-driver-logins', vehicleControllers.getLastDriverLogins);
 router.post('/messages-sent', vehicleControllers.getMessagesSent);
+router.post('/vehicle-status', vehicleControllers.getVehicleStatus);
 // Login
 
 

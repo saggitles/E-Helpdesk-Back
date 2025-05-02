@@ -15,6 +15,7 @@ app.use(express.json());
 const vehicleServices = require('../services/')
 const { Client } = require('pg');
 const NodeCache = require('node-cache');
+const { Console } = require('console');
 const vehicleCache = new NodeCache({ stdTTL: 300, checkperiod: 60 }); // 5 minute TTL
 
 
@@ -129,6 +130,8 @@ exports.getCustomers = async (req, res) => {
       // Add wildcards around gmptCode for substring matching
       const cdResult = await client.query(cdQuery, [`%${gmptCode}%`]);
         vehicleCDs = cdResult.rows.map(row => row.VEHICLE_CD);
+        console.log(`Found ${vehicleCDs.length} vehicles for GMPT code`);
+        console.log(vehicleCDs);
         
       } else if (site && site !== 'undefined' && site !== '') {
         console.log("Fetching by site:", site);
@@ -152,6 +155,7 @@ exports.getCustomers = async (req, res) => {
       // Fetch basic vehicle info
       const vehicleInfo = await fetchVehicleInfo(client, vehicleCDs);
   
+      
       // Immediately return basic vehicle info
       const basicData = vehicleInfo.map(vehicle => ({
         ...vehicle,
@@ -166,6 +170,88 @@ exports.getCustomers = async (req, res) => {
       await client.end();
     }
   };
+
+  exports.getVehicleStatus = async (req, res) => {
+    const { vehicleCDs } = req.body;
+    
+    if (!vehicleCDs || !Array.isArray(vehicleCDs) || vehicleCDs.length === 0) {
+      return res.status(400).json({ error: "Valid vehicle IDs array is required" });
+    }
+  
+    const client = new Client({
+      host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
+      port: 5432,
+      database: "multi",
+      user: "gmtp",
+      password: "MUVQcHz2DqZGHvZh",
+    });
+  
+    try {
+      await client.connect();
+      
+      // Result object to store status for each vehicle
+      const result = {};
+      
+      for (const vehicleCD of vehicleCDs) {
+        try {
+          const query = `
+            SELECT 
+  fvm."VEHICLE_CD",
+  stat_data.status,
+  stat_data.latest_status_time
+FROM "FMS_VEHICLE_MST" fvm
+LEFT JOIN LATERAL (
+  SELECT
+    CASE
+      WHEN (CURRENT_TIMESTAMP AT TIME ZONE EXTRACT(TIMEZONE_HOUR FROM "utc_time")::text) <= ("utc_time" + INTERVAL '20 minutes')
+        THEN 'online'
+      ELSE 'offline'
+    END AS status,
+    "utc_time" AS latest_status_time
+  FROM "fms_stat_data"
+  WHERE "vehicle_cd" = fvm."VEHICLE_CD"
+  ORDER BY "utc_time" DESC
+  LIMIT 1
+) stat_data ON true
+WHERE fvm."VEHICLE_CD" = $1;
+          `;
+          
+          const queryResult = await client.query(query, [vehicleCD]);
+          console.log(`vehicle status result for vehicle ${vehicleCD}:`, queryResult.rows);
+          
+          // If we found a status, add it to the result
+          if (queryResult.rows.length > 0) {
+            result[vehicleCD] = {
+              status: queryResult.rows[0].status || 'offline',
+              latest_status_time: queryResult.rows[0].latest_status_time
+            };
+          } else {
+            // Set to offline if no status found
+            result[vehicleCD] = {
+              status: 'offline',
+              latest_status_time: null
+            };
+          }
+        } catch (err) {
+          console.error(`Error getting status for vehicle ${vehicleCD}: ${err.message}`);
+          // Set to offline on error
+          result[vehicleCD] = { 
+            status: 'offline', 
+            latest_status_time: null,
+            error: err.message  // Include error for debugging
+          };
+        }
+      }
+      
+      return res.status(200).json(result);
+    } catch (err) {
+      console.error("Error in getVehicleStatus:", err.message);
+      return res.status(500).json({ error: "Failed to fetch vehicle status", details: err.message });
+    } finally {
+      await client.end();
+    }
+  };
+
 
   exports.getMasterCodes = async (req, res) => {
     const { vehicleCDs } = req.body;
@@ -381,8 +467,6 @@ exports.getCustomers = async (req, res) => {
           `;
           
           const queryResult = await client.query(query, [vehicleCD]);
-          console.log('Query result:', queryResult.rows);
-          
           result[vehicleCD] = [];
           if (queryResult.rows.length > 0) {
             // Clean the raw timestamp field before sending to frontend
@@ -390,7 +474,6 @@ exports.getCustomers = async (req, res) => {
               // Extract message type from the message string
               let message_type = 'Unknown';
               const msgStr = row.message_text ? row.message_text.toLowerCase() : '';
-              console.log('msgStr', msgStr);
 
               if (msgStr.includes('dlist.txt')) {
                 message_type = 'Driver List';
@@ -448,7 +531,6 @@ exports.getCustomers = async (req, res) => {
             });
             
             result[vehicleCD] = cleanedRows;
-            console.log(`Fetched ${cleanedRows.length} messages for vehicle ${vehicleCD}`, cleanedRows);
           }
         } catch (err) {
           console.error(`Error getting messages for vehicle ${vehicleCD}: ${err.message}`);
@@ -494,55 +576,67 @@ exports.getLastDriverLogins = async (req, res) => {
         // Get just the most recent login for each vehicle
         const query = `
                   WITH "vehicle_user" AS (
-            SELECT "USER_CD"
-            FROM "FMS_USR_VEHICLE_REL"
-            WHERE "VEHICLE_CD" = $1
-        ),
-        "recent_swipes" AS (
-            SELECT "DRIVER_ID", "VEH_CD", "SWIPE_TIME", "ACCEPTED"
-            FROM "FMS_CARD_VERIFICATION"
-            WHERE "VEH_CD" = $1
-              AND "ACCEPTED" = TRUE
-        ),
-        "card_users" AS (
-            SELECT
-                "rs"."DRIVER_ID",
-                "rs"."SWIPE_TIME",
-                "rs"."ACCEPTED",
-                "us"."USER_CD",
-                "us"."CARD_ID",
-                "us"."CARD_PREFIX",
-                "us"."CONTACT_FIRST_NAME",
-                "us"."CONTACT_LAST_NAME"
-            FROM "recent_swipes" "rs"
-            LEFT JOIN "FMS_USR_MST" "us" ON "us"."CARD_ID" = "rs"."DRIVER_ID"
-        ),
-        "matched_users" AS (
-            SELECT 
-                "cu"."DRIVER_ID",
-                "cu"."SWIPE_TIME",
-                "cu"."ACCEPTED",
-                "cu"."USER_CD",
-                "cu"."CARD_PREFIX",
-                "cu"."CONTACT_FIRST_NAME",
-                "cu"."CONTACT_LAST_NAME"
-            FROM "card_users" "cu"
-            LEFT JOIN "FMS_USER_DEPT_REL" "ur" ON "cu"."USER_CD" = "ur"."USER_CD"
-            WHERE "ur"."CUST_CD" = (SELECT "USER_CD" FROM "vehicle_user") OR "cu"."USER_CD" IS NULL
-        )
-        SELECT
-            CASE 
-                WHEN "CONTACT_FIRST_NAME" IS NULL OR "CONTACT_LAST_NAME" IS NULL 
-                    THEN 'No Driver'
-                ELSE "CONTACT_FIRST_NAME" || ' ' || "CONTACT_LAST_NAME"
-            END AS driver_name,
-            "DRIVER_ID" as driver_id,
-            TO_CHAR("SWIPE_TIME", 'DD/MM/YYYY HH24:MI:SS') as login_time,
-            "CARD_PREFIX" as facility_code,
-            "ACCEPTED" as accepted
-        FROM "matched_users"
-        ORDER BY "SWIPE_TIME" DESC
-        LIMIT 10;
+                  SELECT DISTINCT "USER_CD"
+                  FROM "FMS_USR_VEHICLE_REL"
+                  WHERE "VEHICLE_CD" = $1
+                ),
+                "recent_swipes" AS (
+                  SELECT "DRIVER_ID", "VEH_CD", "SWIPE_TIME", "ACCEPTED"
+                  FROM "FMS_CARD_VERIFICATION"
+                  WHERE "VEH_CD" = $1
+                    AND "ACCEPTED" = TRUE
+                ),
+                "card_users" AS (
+                  SELECT
+                    "rs"."DRIVER_ID",
+                    "rs"."SWIPE_TIME",
+                    "rs"."ACCEPTED",
+                    "us"."USER_CD",
+                    "us"."CARD_ID",
+                    "us"."CARD_PREFIX",
+                    "us"."CONTACT_FIRST_NAME",
+                    "us"."CONTACT_LAST_NAME"
+                  FROM "recent_swipes" "rs"
+                  LEFT JOIN "FMS_USR_MST" "us" ON "us"."CARD_ID" = "rs"."DRIVER_ID"
+                ),
+                "matched_users" AS (
+                  SELECT 
+                    "cu"."DRIVER_ID",
+                    "cu"."SWIPE_TIME",
+                    "cu"."ACCEPTED",
+                    "cu"."USER_CD",
+                    "cu"."CARD_PREFIX",
+                    "cu"."CONTACT_FIRST_NAME",
+                    "cu"."CONTACT_LAST_NAME",
+                    -- Rank each swipe by driver to get the most recent one
+                    ROW_NUMBER() OVER (
+                      PARTITION BY 
+                        CASE 
+                          WHEN "CONTACT_FIRST_NAME" IS NULL OR "CONTACT_LAST_NAME" IS NULL 
+                            THEN 'No Driver-' || "DRIVER_ID"
+                          ELSE "CONTACT_FIRST_NAME" || ' ' || "CONTACT_LAST_NAME"
+                        END
+                      ORDER BY "SWIPE_TIME" DESC
+                    ) as rank
+                  FROM "card_users" "cu"
+                  LEFT JOIN "FMS_USER_DEPT_REL" "ur" ON "cu"."USER_CD" = "ur"."USER_CD"
+                  WHERE "ur"."CUST_CD" = (SELECT "USER_CD" FROM "vehicle_user") OR "cu"."USER_CD" IS NULL
+                )
+                SELECT
+                  CASE 
+                    WHEN "CONTACT_FIRST_NAME" IS NULL OR "CONTACT_LAST_NAME" IS NULL 
+                      THEN 'No Driver'
+                    ELSE "CONTACT_FIRST_NAME" || ' ' || "CONTACT_LAST_NAME"
+                  END AS driver_name,
+                  "DRIVER_ID" as driver_id,
+                  TO_CHAR("SWIPE_TIME", 'DD/MM/YYYY HH24:MI:SS') as login_time,
+                  "CARD_PREFIX" as facility_code,
+                  "ACCEPTED" as accepted,
+                  "SWIPE_TIME" as raw_timestamp
+                FROM "matched_users"
+                WHERE rank = 1
+                ORDER BY "SWIPE_TIME" DESC
+                LIMIT 10;
         `;
         
 const queryResult = await client.query(query, [vehicleCD]);
@@ -578,7 +672,6 @@ if (queryResult.rows.length > 0) {
 
   exports.clearVehicleCache = async (req, res) => {
     try {
-      console.log('Clearing vehicle cache');
       vehicleCache.flushAll();
       return res.status(200).json({ message: 'Cache cleared successfully' });
     } catch (error) {
@@ -592,33 +685,27 @@ if (queryResult.rows.length > 0) {
   // ✅ Fetch Basic Vehicle Info
   async function fetchVehicleInfo(client, vehicleCDs) {
     try {
-      // Normalize the vehicleCDs input
+      // Input normalization (keep this part the same)
       let vehicleArray;
-      
-      // Handle different input types
+      console.log('vehicleCDs', vehicleCDs);
       if (Array.isArray(vehicleCDs)) {
         vehicleArray = vehicleCDs;
       } else if (typeof vehicleCDs === 'string') {
-        // Check if it's a stringified JSON array
         if (vehicleCDs.startsWith('{') || vehicleCDs.startsWith('[')) {
           try {
-            // Try to parse the string as JSON
             const normalizedStr = vehicleCDs.replace(/{/g, '[').replace(/}/g, ']');
             vehicleArray = JSON.parse(normalizedStr);
           } catch (e) {
-            // If parsing fails, assume it's a single ID
             vehicleArray = [vehicleCDs];
           }
         } else {
-          // It's a single ID or comma-separated list
           vehicleArray = vehicleCDs.split(',');
         }
       } else {
-        // If it's not an array or string, wrap it
         vehicleArray = [vehicleCDs];
       }
       
-      // Ensure all elements are integers
+      // Process vehicle IDs
       const vehicleIds = vehicleArray
         .map(id => parseInt(id.toString().trim(), 10))
         .filter(id => !isNaN(id));
@@ -628,170 +715,252 @@ if (queryResult.rows.length > 0) {
         return [];
       }
       
-      // Create cache key from integers
+      // Cache management
       const cacheKey = `vehicles_${[...vehicleIds].sort().join('_')}`;
-      
-      // Check cache
       const cachedData = vehicleCache.get(cacheKey);
       if (cachedData) {
         console.log('Cache hit for vehicles:', vehicleIds);
         return cachedData;
       }
       
-      // If not in cache, execute your query
       console.log('Cache miss for vehicles:', vehicleIds);
-      
-      // Use the IN operator for multiple IDs
-      const placeholders = vehicleIds.map((_, i) => `$${i + 1}`).join(',');
-      
+  
+      // OPTIMIZED QUERY: Move expensive calculations to JavaScript
+      // Use the IN operator with a simplified query
+      const vehicleIdStr = vehicleIds.join(',');
       const query = `
-        WITH "filtered_vehicles" AS (
-          SELECT *
-          FROM "FMS_VEHICLE_MST"
-          WHERE "VEHICLE_CD" IN (${placeholders})
-        )
-        SELECT DISTINCT ON (fvm."VEHICLE_CD")
-          fvm."VEHICLE_CD",
-          jsonb_build_object(
-            'status', fsd."status",
-            'has_wifi', ns."veh_cd" IS NOT NULL,
-            'gmpt_code', fvm."VEHICLE_ID",
-            'seat_idle', fvm."seat_idle",
-            'site_name', loc."NAME",
-            'department', fdm."DEPT_NAME",
-            'sim_number', fvm."CCID",
-            'vor_setting', fvm."vor_setting",
-            'lockout_code', fvm."lockout_code",
-            'vehicle_name', fvm."HIRE_NO",
-            'vehicle_type', fvm."VEHICLE_TYPE_CD",
-            'customer_name', cust."USER_NAME",
-            'idle_polarity', CASE
-                                 WHEN dmr."input_type" = 1 THEN 'High'
-                                 WHEN dmr."input_type" = 0 THEN 'Low'
-                                 ELSE 'Unknown'
-                            END,
-            'serial_number', fvm."SERIAL_NO",
-            'vehicle_model', vt."VEHICLE_TYPE",
-            'impact_lockout', fvm."IMPACT_LOCKOUT",
-            'preop_schedule',
-                CASE
-                    WHEN chk."alerttype" = 3 THEN 'DRIVER BASED'
-                    WHEN chk."alerttype" = 2 THEN 'TIME BASED'
-                    ELSE 'N/A'
-                END,
-            'screen_version',
-                CASE
-                    WHEN ver."CURR_VER" IS NULL THEN 'unknown'
-                    WHEN length(ver."CURR_VER"::text) >= 15 THEN
-                      CASE
-                        WHEN ((hex_to_bigint(ver."CURR_VER")::bit(64) & B'0000000000000000111111111111111100000000000000000000000000000000') >> 32)::bigint = 1 THEN 'MK1'
-                        WHEN ((hex_to_bigint(ver."CURR_VER")::bit(64) & B'0000000000000000111111111111111100000000000000000000000000000000') >> 32)::bigint = 2 THEN 'MK2'
-                        WHEN ((hex_to_bigint(ver."CURR_VER")::bit(64) & B'0000000000000000111111111111111100000000000000000000000000000000') >> 32)::bigint = 5 THEN 'MK3'
-                        ELSE 'unknown'
-                      END
-                    ELSE
-                      CASE
-                        WHEN ((hex_to_int(ver."CURR_VER")::bit(24) & B'000000000011000000000000') >> 12)::int = 1 THEN 'MK1'
-                        WHEN ((hex_to_int(ver."CURR_VER")::bit(24) & B'000000000011000000000000') >> 12)::int = 2 THEN 'MK2'
-                        WHEN ((hex_to_int(ver."CURR_VER")::bit(24) & B'000000000011000000000000') >> 12)::int = 5 THEN 'MK3'
-                        ELSE 'unknown'
-                      END
-                END,
-            'survey_timeout', fvm."survey_timeout",
-            'last_connection', TO_CHAR(fvm."LAST_EOS", 'DD/MM/YYYY HH24:MI'),
-            'firmware_version', 
-                CASE
-                    WHEN ver."MK3DBG" IS NOT NULL THEN ver."MK3DBG"::text
-                    WHEN ver."CURR_VER" IS NULL THEN 'unknown'
-                    WHEN length(ver."CURR_VER"::text) >= 15 THEN
-                      (((((hex_to_bigint(ver."CURR_VER")::bit(64) & B'0000000000000000111111111111111100000000000000000000000000000000') >> 32)::bigint)::text)
-                      || '.' ||
-                      ((hex_to_bigint(ver."CURR_VER")::bit(64) & B'0000000000000000000000000000000011111111111111110000000000000000') >> 16)::bigint::text
-                      || '.' ||
-                      (hex_to_bigint(ver."CURR_VER")::bit(64) & B'0000000000000000000000000000000000000000000000001111111111111111')::bigint::text)
-                    ELSE
-                      (((((hex_to_int(ver."CURR_VER")::bit(24) & B'000000000011000000000000') >> 12)::int)::text)
-                      || '.' ||
-                      ((hex_to_int(ver."CURR_VER")::bit(24) & B'000000000000111111000000') >> 6)::int::text
-                      || '.' ||
-                      (hex_to_int(ver."CURR_VER")::bit(24) & B'000000000000000000111111')::int::text)
-                END,
-            'expansion_version', ver."EXPMOD_VER",
-            'full_lockout_enabled', fvm."full_lockout_enabled",
-            'full_lockout_timeout', fvm."full_lockout_timeout",
-            'last_dlist_timestamp', dlist."timestamp_s",
-            'last_preop_timestamp', preop."timestamp_s",
-            'red_impact_threshold', ROUND(CAST(0.00388 * SQRT(GREATEST(fvm."FSSS_BASE", 0) * GREATEST(fvm."FSSSMULTI", 0) * 10) AS NUMERIC), 3),
-            'impact_recalibration_date', fvm."CALIBRATED_RESET"
-          ) AS "vehicle_info"
-        FROM "filtered_vehicles" fvm
-        LEFT JOIN "FMS_USR_VEHICLE_REL" fuvr ON fuvr."VEHICLE_CD" = fvm."VEHICLE_CD"
-        LEFT JOIN "FMS_DEPT_MST" fdm ON fdm."DEPT_CD" = fuvr."DEPT_CD"
-        LEFT JOIN "FMS_CUST_MST" cust ON cust."USER_CD" = fuvr."USER_CD"
-        LEFT JOIN "FMS_LOC_MST" loc ON loc."LOCATION_CD" = fuvr."LOC_CD"
-        LEFT JOIN "FMS_VEHICLE_TYPE_MST" vt ON vt."VEHICLE_TYPE_CD" = fvm."VEHICLE_TYPE_CD"
-        LEFT JOIN "veh_network_settings" ns ON ns."veh_cd" = fvm."VEHICLE_CD"
-        LEFT JOIN "dealer_model_rel_new" dmr ON dmr."model_id" = fvm."VEHICLE_TYPE_CD"
-        LEFT JOIN "dealer_cust_rel" dcr ON dcr."cust_id" = cust."USER_CD" AND dmr."dealer_id" = dcr."dealer_id"
-        LEFT JOIN "fms_can_rules_mapping" can ON can."crc"::text = fvm."CRC"::text
-        LEFT JOIN "op_chk_unitalertcondition" chk ON chk."gmtp_id"::text = fvm."VEHICLE_ID"::text
-        LEFT JOIN "FMS_VER_STORE" ver ON ver."VEHICLE_CD" = fvm."VEHICLE_CD"
         
-        -- Status calculado con TZ
-        LEFT JOIN LATERAL (
-          SELECT 
-            CASE
-              WHEN (CURRENT_TIMESTAMP AT TIME ZONE EXTRACT(TIMEZONE_HOUR FROM "utc_time")::text) <= ("utc_time" + INTERVAL '20 minutes')
-                THEN 'online'
-                ELSE 'offline'
-            END AS "status"
-          FROM "fms_stat_data"
-          WHERE "vehicle_cd" = fvm."VEHICLE_CD"
-            AND (CURRENT_TIMESTAMP AT TIME ZONE EXTRACT(TIMEZONE_HOUR FROM "utc_time")::text) > ("utc_time" - INTERVAL '21 minutes')
-          ORDER BY "utc_time" DESC
-          LIMIT 1
-        ) fsd ON TRUE
-        
-        -- Último dlist.txt
-        LEFT JOIN LATERAL (
-          SELECT TO_CHAR("timestamp_s", 'DD/MM/YYYY HH24:MI') AS "timestamp_s"
-          FROM "outgoing_stat"
-          WHERE "destination_s" = fvm."VEHICLE_ID"
-            AND "message_s" ILIKE '%dlist.txt%'
-          ORDER BY "timestamp_s" DESC
-          LIMIT 1
-        ) dlist ON TRUE
-        
-        -- Último PREOP.TXT
-        LEFT JOIN LATERAL (
-          SELECT TO_CHAR("timestamp_s", 'DD/MM/YYYY HH24:MI') AS "timestamp_s"
-          FROM "outgoing_stat"
-          WHERE "destination_s" = fvm."VEHICLE_ID"
-            AND "message_s" ILIKE '%PREOP%'
-          ORDER BY "timestamp_s" DESC
-          LIMIT 1
-        ) preop ON TRUE
-        
-        ORDER BY fvm."VEHICLE_CD", fuvr."USER_CD" NULLS LAST;
+SELECT DISTINCT ON (fvm."VEHICLE_CD")
+  fvm."VEHICLE_CD",
+  fvm."VEHICLE_ID" as gmpt_code,
+  fvm."seat_idle",
+  fvm."SERIAL_NO" as serial_number,
+  fvm."HIRE_NO" as vehicle_name,
+  fvm."VEHICLE_TYPE_CD" as vehicle_type,
+  fvm."CCID" as sim_number,
+  fvm."vor_setting",
+  fvm."lockout_code",
+  fvm."IMPACT_LOCKOUT" as impact_lockout,
+  fvm."survey_timeout",
+  fvm."LAST_EOS" as last_connection,
+  fvm."full_lockout_enabled",
+  fvm."full_lockout_timeout",
+  fvm."FSSS_BASE",
+  fvm."FSSSMULTI",
+  fvm."CALIBRATED_RESET" as impact_recalibration_date,
+  fvm."CRC",
+  (SELECT loc."NAME"
+   FROM "FMS_USR_VEHICLE_REL" rel
+   JOIN "FMS_LOC_MST" loc ON loc."LOCATION_CD" = rel."LOC_CD"
+   WHERE rel."VEHICLE_CD" = fvm."VEHICLE_CD"
+   ORDER BY rel."USER_CD" NULLS LAST
+   LIMIT 1) as site_name,
+  (SELECT dpt."DEPT_NAME"
+   FROM "FMS_USR_VEHICLE_REL" rel
+   JOIN "FMS_DEPT_MST" dpt ON dpt."DEPT_CD" = rel."DEPT_CD"
+   WHERE rel."VEHICLE_CD" = fvm."VEHICLE_CD"
+   ORDER BY rel."USER_CD" NULLS LAST
+   LIMIT 1) as department,
+  (SELECT cust."USER_CD"
+   FROM "FMS_USR_VEHICLE_REL" rel
+   JOIN "FMS_CUST_MST" cust ON cust."USER_CD" = rel."USER_CD"
+   WHERE rel."VEHICLE_CD" = fvm."VEHICLE_CD"
+   ORDER BY rel."USER_CD" NULLS LAST
+   LIMIT 1) as customer_id,
+  (SELECT cust."USER_NAME"
+   FROM "FMS_USR_VEHICLE_REL" rel
+   JOIN "FMS_CUST_MST" cust ON cust."USER_CD" = rel."USER_CD"
+   WHERE rel."VEHICLE_CD" = fvm."VEHICLE_CD"
+   ORDER BY rel."USER_CD" NULLS LAST
+   LIMIT 1) as customer_name,
+  (SELECT dmr."input_type"
+   FROM "dealer_model_rel_new" dmr
+   WHERE dmr."model_id" = fvm."VEHICLE_TYPE_CD"
+   LIMIT 1) as input_type,
+  vt."VEHICLE_TYPE" as vehicle_model,
+  (SELECT chk."alerttype"
+   FROM "op_chk_unitalertcondition" chk
+   WHERE chk."gmtp_id"::text = fvm."VEHICLE_ID"::text
+   LIMIT 1) as alerttype,
+  ver."CURR_VER",
+  ver."MK3DBG",
+  ver."EXPMOD_VER",
+  ns."veh_cd" as network_veh_cd,
+  -- dlist
+  (SELECT "timestamp_s"
+   FROM "outgoing_stat"
+   WHERE "destination_s" = fvm."VEHICLE_ID"
+     AND "message_s" ILIKE '%dlist.txt%'
+   ORDER BY "timestamp_s" DESC
+   LIMIT 1) as dlist_timestamp,
+  -- preop
+  (SELECT "timestamp_s"
+   FROM "outgoing_stat"
+   WHERE "destination_s" = fvm."VEHICLE_ID"
+     AND "message_s" ILIKE '%PREOP%'
+   ORDER BY "timestamp_s" DESC
+   LIMIT 1) as preop_timestamp
+FROM "FMS_VEHICLE_MST" fvm
+LEFT JOIN "FMS_VEHICLE_TYPE_MST" vt ON vt."VEHICLE_TYPE_CD" = fvm."VEHICLE_TYPE_CD"
+LEFT JOIN "veh_network_settings" ns ON ns."veh_cd" = fvm."VEHICLE_CD"
+LEFT JOIN "FMS_VER_STORE" ver ON ver."VEHICLE_CD" = fvm."VEHICLE_CD"
+WHERE fvm."VEHICLE_CD" IN (${vehicleIdStr})
+ORDER BY fvm."VEHICLE_CD";
       `;
-    
-      // Pass array of IDs as parameters
-      const result = await client.query(query, vehicleIds);
+  
+      const result = await client.query(query);
+      console.log('result.rows FETCH VEHICLE INFO', result.rows);
+      // Process results in JavaScript instead of SQL
+      const processedRows = result.rows.map(row => {
+        // Calculate status in JS
+        let status = 'offline';
+        if (row.latest_status_time) {
+          const utcTime = new Date(row.latest_status_time);
+          const currentTime = new Date();
+          const timeDiffMinutes = (currentTime - utcTime) / (1000 * 60);
+          if (timeDiffMinutes <= 20) status = 'online';
+        }
+        
+        // Format dates in JS
+        const formatDate = (timestamp) => {
+          if (!timestamp) return null;
+          const date = new Date(timestamp);
+          return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+        };
+        
+        // Calculate idle polarity in JS
+        let idlePolarity = 'Unknown';
+        if (row.input_type === 1) idlePolarity = 'High';
+        else if (row.input_type === 0) idlePolarity = 'Low';
+        
+        // Calculate preop schedule in JS
+        let preopSchedule = 'N/A';
+        if (row.alerttype === 3) preopSchedule = 'DRIVER BASED';
+        else if (row.alerttype === 2) preopSchedule = 'TIME BASED';
+        
+        // Calculate screen version in JS
+        let screenVersion = 'unknown';
+        if (row.curr_ver) {
+          try {
+            // Parse and process version data in JS
+            const currVerString = String(row.curr_ver);
+            if (currVerString.length >= 15) {
+              // Use simpler logic without bit operations
+              const versionType = parseInt(currVerString.substring(0, 1), 16);
+              if (versionType === 1) screenVersion = 'MK1';
+              else if (versionType === 2) screenVersion = 'MK2';
+              else if (versionType === 5) screenVersion = 'MK3';
+            } else {
+              // Handle shorter version string
+              const versionType = parseInt(currVerString.substring(0, 1), 16);
+              if (versionType === 1) screenVersion = 'MK1';
+              else if (versionType === 2) screenVersion = 'MK2';
+              else if (versionType === 5) screenVersion = 'MK3';
+            }
+          } catch (e) {
+            screenVersion = 'unknown';
+          }
+        }
+        
+        // Calculate firmware version in JS
+        let firmwareVersion = 'unknown';
+        if (row.mk3dbg) {
+          firmwareVersion = String(row.mk3dbg);
+        } else if (row.curr_ver) {
+          try {
+            // Simplified version calculation
+            const currVerString = String(row.curr_ver);
+            if (currVerString.length >= 15) {
+              const part1 = parseInt(currVerString.substring(0, 1), 16);
+              const part2 = parseInt(currVerString.substring(1, 3), 16);
+              const part3 = parseInt(currVerString.substring(3, 5), 16);
+              firmwareVersion = `${part1}.${part2}.${part3}`;
+            } else {
+              const part1 = parseInt(currVerString.substring(0, 1), 16);
+              const part2 = parseInt(currVerString.substring(1, 2), 16);
+              const part3 = parseInt(currVerString.substring(2, 3), 16);
+              firmwareVersion = `${part1}.${part2}.${part3}`;
+            }
+          } catch (e) {
+            firmwareVersion = 'unknown';
+          }
+        }
+        
+        // Calculate red impact threshold in JS with better error handling
+        let redImpactThreshold = 0;
+        try {
+          // Ensure case-insensitive field names and provide defaults
+          const fsssBase = parseFloat(row.fsss_base || row.FSSS_BASE || 100);
+          const fsssMult = parseFloat(row.fsssmulti || row.FSSSMULTI || 100);
+          
+          // Debug logging
+          console.log(`Vehicle ${row.vehicle_cd || row.VEHICLE_CD}: FSSS_BASE=${fsssBase}, FSSSMULTI=${fsssMult}`);
+          
+          // Ensure positive values before sqrt operation
+          if (fsssBase > 0 && fsssMult > 0) {
+            redImpactThreshold = parseFloat(
+              (0.00388 * Math.sqrt(fsssBase * fsssMult * 10)).toFixed(3)
+            );
+          } else {
+            // Use a sensible default if the values aren't available
+            redImpactThreshold = 1.227; // This is the value for 100 * 100 * 10 under sqrt
+          }
+        } catch (e) {
+          console.error('Error calculating red impact threshold:', e);
+          redImpactThreshold = 1.227; // Default fallback
+        }
+  
+        return {
+          VEHICLE_CD: row.VEHICLE_CD,
+          vehicle_info: {
+            status,
+            has_wifi: !!row.network_veh_cd,
+            gmpt_code: row.gmpt_code,
+            seat_idle: row.seat_idle,
+            site_name: row.site_name,
+            department: row.department,
+            sim_number: row.sim_number,
+            vor_setting: row.vor_setting,
+            lockout_code: row.lockout_code,
+            vehicle_name: row.vehicle_name,
+            vehicle_type: row.vehicle_type,
+            customer_name: row.customer_name,
+            idle_polarity: idlePolarity,
+            serial_number: row.serial_number,
+            vehicle_model: row.vehicle_model,
+            impact_lockout: row.impact_lockout,
+            preop_schedule: preopSchedule,
+            screen_version: screenVersion,
+            survey_timeout: row.survey_timeout,
+            last_connection: formatDate(row.last_connection),
+            firmware_version: firmwareVersion,
+            expansion_version: row.expmod_ver,
+            full_lockout_enabled: row.full_lockout_enabled,
+            full_lockout_timeout: row.full_lockout_timeout,
+            last_dlist_timestamp: formatDate(row.dlist_timestamp),
+            last_preop_timestamp: formatDate(row.preop_timestamp),
+            red_impact_threshold: redImpactThreshold,
+            impact_recalibration_date: formatDate(row.impact_recalibration_date)
+          }
+        };
+      });
       
-      // Store result in cache before returning
-      vehicleCache.set(cacheKey, result.rows);
-      return result.rows;
+      // Store result in cache
+      vehicleCache.set(cacheKey, processedRows);
+      console.log('rows i am returnig from the back in vehicle info', processedRows);
+      return processedRows;
     } catch (err) {
       console.error("Database Query Failed:", err.message);
       return [];
     }
   }
 
-  async function fetchVehicleLogins(client, vehicleCDs) {
-    // Process each vehicle ID individually to build proper WITH clauses
+
+
+  async function fetchVehicleLogins(client, vehiclecds) {
     const allLogins = {};
     
-    for (const vehicleCD of vehicleCDs) {
+    for (const vehicleCD of vehiclecds) {
       const query = `
         
       WITH "vehicle_user" AS (
@@ -846,8 +1015,6 @@ if (queryResult.rows.length > 0) {
     `;
   
       const result = await client.query(query, [vehicleCD]);
-      //console.log('Fetching vehicle logins for vehicle:', vehicleCD, result.rows);
-      
       allLogins[vehicleCD] = result.rows.map(row => row);
     }
     
@@ -1032,7 +1199,7 @@ const dbConfig = {
         return acc;
       }, {});
   
-      console.log(`Paired ${Object.keys(pairedSnapshots).length} vehicle snapshots`);
+
       res.json(pairedSnapshots);
     } catch (error) {
       console.error('Error fetching snapshots:', error.message);
