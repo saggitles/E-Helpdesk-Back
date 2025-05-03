@@ -340,18 +340,19 @@ WHERE fvm."VEHICLE_CD" = $1;
         try {
           const query = `
             SELECT 
-                fdb."VEHICLE_CD", 
-                jsonb_build_object(
-                  'blacklistedDriver', 
-                  fum_blacklist."CONTACT_FIRST_NAME" || ' ' || fum_blacklist."CONTACT_LAST_NAME"
-                ) AS blacklisted_driver
-              FROM 
-                "FMS_DRIVER_BLKLST" fdb
-              JOIN 
-                "FMS_USR_MST" fum_blacklist 
-                ON fdb."USER_CD" = fum_blacklist."USER_CD"
-              WHERE 
-                fdb."VEHICLE_CD" = ANY($1);
+            fdb."VEHICLE_CD", 
+            jsonb_build_object(
+              'blacklistedDriver', fum_blacklist."CONTACT_FIRST_NAME" || ' ' || fum_blacklist."CONTACT_LAST_NAME",
+              'card_id', fum_blacklist."CARD_ID",
+              'driver_id', fum_blacklist."DRIVER_ID"
+            ) AS blacklisted_driver
+          FROM 
+            "FMS_DRIVER_BLKLST" fdb
+          JOIN 
+            "FMS_USR_MST" fum_blacklist 
+            ON fdb."USER_CD" = fum_blacklist."USER_CD"
+          WHERE 
+            fdb."VEHICLE_CD"  = ANY($1);
           `;
 
           // Wrap vehicleCD in an array
@@ -359,6 +360,8 @@ WHERE fvm."VEHICLE_CD" = $1;
 
           result[vehicleCD] = queryResult.rows.map(row => ({
             driver_name: row.blacklisted_driver.blacklistedDriver,
+            card_id: row.blacklisted_driver.card_id,
+            driver_id: row.blacklisted_driver.driver_id,
           }));
         } catch (err) {
           console.error(`Error getting blacklisted drivers for vehicle ${vehicleCD}: ${err.message}`);
