@@ -459,7 +459,7 @@ WHERE fvm."VEHICLE_CD" = $1;
             'done' AS status
           FROM "outgoing_stat" os
           JOIN veh_id_cte v ON os."destination_s" = v."VEHICLE_ID"
-          WHERE os."timestamp_s_local" >= NOW() - INTERVAL '3 days'
+          WHERE os."timestamp_s_local" >= NOW() - INTERVAL '7 days'
 
           ORDER BY
             message_timestamp DESC,
@@ -469,57 +469,42 @@ WHERE fvm."VEHICLE_CD" = $1;
           const queryResult = await client.query(query, [vehicleCD]);
           result[vehicleCD] = [];
           if (queryResult.rows.length > 0) {
-            // Clean the raw timestamp field before sending to frontend
+            const MESSAGE_TYPE_MAP = {
+              'dlist.txt': 'Driver List',
+              'preop': 'Pre-Op Checklist',
+              'idmast': 'Master Code',
+              'idauth': 'User Weigand',
+              'idsave': 'User save',
+              'idbatch': 'User creation',
+              'msg': 'Message',
+              'iddeny': 'Denied Weigand',
+              'wifi': 'WIFI credentials',
+              'amimp': 'Amber Warning',
+              'lockout': 'Full Lockout',
+              'fssx': 'Impact Gforce value',
+              'idle': 'Vehicle Idle',
+              'digcfg': 'Pedestrian Detection', // Fixed typo
+              'chkt': 'Checklist Scheduled Time',
+              'convor': 'VOR Mode',
+              'oprndm': 'Checklist Randomisation',
+              'showpc': 'Show checklist comments',
+              'surv': 'Checklist Timeout',
+              'tlist.txt': 'Technician List'
+            };
+            
+            // In your getMessagesSent function:
             const cleanedRows = queryResult.rows.map(row => {
               // Extract message type from the message string
               let message_type = 'Unknown';
               const msgStr = row.message_text ? row.message_text.toLowerCase() : '';
-
-              if (msgStr.includes('dlist.txt')) {
-                message_type = 'Driver List';
-              } else if (msgStr.includes('preop')) {
-                message_type = 'Pre-Op Checklist';
-              } else if (msgStr.includes('idmast')) {
-                message_type = 'Master Code';
-              } else if (msgStr.includes('idauth')) {
-                message_type = 'User Weigand';
-              } else if (msgStr.includes('idsave')) {
-                message_type = 'idk';
-              } else if (msgStr.includes('idbatch')) {
-                message_type = 'idk';
-              } else if (msgStr.includes('msg')) {
-                message_type = 'Message';
-              } else if (msgStr.includes('iddeny')) {
-                message_type = 'Denied Weigand';
-              } else if (msgStr.includes('wifi')) {
-                message_type = 'WIFI credentials';
-              } else if (msgStr.includes('amimp')) {
-                message_type = 'Amber Warning';
-              } else if (msgStr.includes('lockout')) {
-                message_type = 'Full Lockout';
-              } else if (msgStr.includes('fssx')) {
-                message_type = 'Impact Gforce value';
-              } else if (msgStr.includes('idle')) {
-                message_type = 'Vehicle Idle';
-              } else if (msgStr.includes('digcfg')) {
-                message_type = 'Seen Safety';
-              } else if (msgStr.includes('chkt')) {
-                message_type = 'Checklist Scheduled Time';
-              } else if (msgStr.includes('convor')) {
-                message_type = 'VOR Mode';
-              } else if (msgStr.includes('oprndm')) {
-                message_type = 'Checklist Randomisation';
-              } else if (msgStr.includes('showpc')) {
-                message_type = 'Show checklist comments';
-              } else if (msgStr.includes('surv')) {
-                message_type = 'Checklist Timeout';
-              } else if (msgStr.includes('tlist.txt')) {
-                message_type = 'Technician List';
+              
+              // Check each key in our map against the message string
+              for (const [keyword, type] of Object.entries(MESSAGE_TYPE_MAP)) {
+                if (msgStr.includes(keyword)) {
+                  message_type = type;
+                  break; // Stop at the first match
+                }
               }
-              
-               
-              
-
               
               // Return a new object with the formatted data
               return {
