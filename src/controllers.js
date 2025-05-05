@@ -44,15 +44,6 @@ const requirePermission = (permission) => {
   };
 };
 
-exports.getCustomers = async (req, res) => {
-  try {
-    const customers = await prisma.customer.findMany();
-    res.json(customers);
-  } catch (error) {
-    console.error('Error getting customer list:', error);
-    res.status(500).json({ message: 'Internal server error getting client list.' });
-  }
-};
 
 // TICKETS
 
@@ -75,7 +66,7 @@ exports.getTicketsPagination = async (req, res) => {
         },
         AssignedUser: {
           select: {
-            Username: true
+            username: true
           }
         }
       }
@@ -95,109 +86,92 @@ exports.getTicketsPagination = async (req, res) => {
 };
 
 
-exports.getTickets = async (req, res) => {
+
+
+
+
+
+exports.getAssignedUserForTicket = async (req, res) => {
   try {
-    const tickets = await prisma.ticket.findMany({
-      include: {
-        Customer: {
+    const ticketId = parseInt(req.params.id, 10);
+
+    if (isNaN(ticketId)) {
+      return res.status(400).json({ 
+        error: 'Invalid ticket ID format' 
+      });
+    }
+
+    const ticket = await prisma.ticket.findUnique({
+      where: {
+        id: ticketId
+      },
+      include: {  // Changed from select to include for relations
+        assigned_user: {
           select: {
-            CustomerName: true
-          }
-        },
-        AssignedUser: {
-          select: {
-            Username: true
+            id: true,
+            username: true
           }
         }
       }
     });
 
-    const ticketsWithCustomerNames = tickets.map(ticket => ({
-      ...ticket,
-      Customer: ticket.Customer?.CustomerName || null,
-      User: ticket.AssignedUser?.Username || null
-    }));
-
-    res.json(ticketsWithCustomerNames);
-  } catch (error) {
-    console.error('Error getting ticket list:', error);
-    res.status(500).json({ message: 'Internal server error getting ticket list.' });
-  }
-};
-
-
-exports.getTicket = async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const ticket = await prisma.ticket.findUnique({
-      where: {
-        IDTicket: id,
-      },
-    });
-    if (ticket) {
-      res.json(ticket);
-    } else {
-      res.status(404).json({ message: 'Ticket not found.' });
-    }
-  } catch (error) {
-    console.error('Error getting ticket:', error);
-    res.status(500).json({ message: 'Internal server error getting ticket.' });
-  }
-};
-
-exports.getAssignedUserForTicket = async (req, res) => {
-  const ticketId = parseInt(req.params.ticketId, 10); // Convert ticketId to integer
-
-  try {
-    // Fetch the ticket from the database
-    const ticket = await prisma.ticket.findUnique({
-      where: {
-        IDTicket: ticketId,
-      },
-      include: {
-        AssignedUser: true, // Include the associated user (assigned user)
-      },
-    });
-
     if (!ticket) {
-      return res.status(404).json({ message: 'Ticket not found' });
+      return res.status(404).json({ 
+        error: 'Ticket not found' 
+      });
     }
 
-    // Extract the assigned user ID from the ticket
-    const assignedUserId = ticket.AssignedUser ? ticket.AssignedUser.IDUser : null;
+    const assignedUserId = ticket.assigned_user?.id || null;
 
-    res.json({ assigneeId: assignedUserId });
+    return res.status(200).json({ assigneeId: assignedUserId });
+
   } catch (error) {
-    console.error('Error getting assigned user for ticket:', error);
-    res.status(500).json({ message: 'Internal server error getting assigned user for ticket.' });
+    console.error('Error getting assigned user:', error);
+    return res.status(500).json({ 
+      error: 'Failed to get assigned user',
+      details: error.message 
+    });
   }
 };
 
 exports.createTicket = async (req, res) => {
+  console.log('Request Body:', req.body); // Ver contenido del body
   try {
-    let newTicket = req.body;
+    // Convert date string to ISO DateTime
+    const incidentDate = req.body.incident_date ? 
+      new Date(req.body.incident_date).toISOString() : 
+      null;
 
-    // Parse the `ticket` field if it is a stringified JSON
-    if (typeof newTicket.ticket === 'string') {
-      newTicket = JSON.parse(newTicket.ticket);
-    }
-
-    console.log('Creating ticket:', newTicket);
-
-    // Convert `incidentDate` to ISO-8601 format if it exists
-    if (newTicket.incidentDate) {
-      newTicket.incidentDate = new Date(newTicket.incidentDate).toISOString();
-    }
-
-    // Pass the parsed and formatted data to Prisma
-    const createdTicket = await prisma.ticket.create({
-      data: newTicket,
+    const ticket = await prisma.ticket.create({
+      data: {
+        title: req.body.title,
+        site_id: parseInt(req.body.site_id),
+        site_name: req.body.site_name,
+        contact_name: req.body.contact_name,
+        priority: req.body.priority,
+        status: req.body.status,
+        category: req.body.category,
+        customer_name: req.body.customer_name,
+        customer_id: parseInt(req.body.customer_id),
+        description: req.body.description,
+        incident_date: incidentDate,
+        drivers_name: req.body.drivers_name || "",
+        vehicle_id: req.body.vehicle_id || "",
+        created_by: req.body.created_by,
+        email: req.body.email,
+        platform: req.body.platform,
+        solution: req.body.solution || "",
+        phone: req.body.phone || ""
+      }
     });
 
-    res.status(201).json(createdTicket);
+    res.status(201).json(ticket);
   } catch (error) {
-    console.error('Error creating ticket:', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Ticket creation error:', error);
+    res.status(500).json({ 
+      error: 'Failed to create ticket',
+      details: error.message 
+    });
   }
 };
 
@@ -205,7 +179,7 @@ exports.createTicket = async (req, res) => {
 exports.updateTicket = async (req, res) => {
   console.log('Request Body:', req.body); // Ver contenido del body
   let ticketId = req.params.id;
-  const { JiraTicketID, createdAt, updatedAt, incidentDate, ...updatedFields } = req.body;
+  const { JiraTicketID, ...updatedFields } = req.body;
 
   // Parse the ticket ID if it's a number.
   if (!isNaN(ticketId)) {
@@ -221,6 +195,7 @@ exports.updateTicket = async (req, res) => {
 
   // Ensure `openSince` is not included in the update.
   delete updatedFields.openSince;
+  delete updatedFields.createdAt;
 
   try {
     console.log('Updating ticket with data:', updatedFields); // Ver los datos antes de la actualización
@@ -245,14 +220,6 @@ function excelSerialDateToJSDate(serial) {
   return new Date(excelEpochAsUnixTimestamp + daysToMs + missingLeapYearDay);
 }
 
-
-function excelSerialDateToJSDate(serial) {
-  const excelEpoch = new Date(1899, 11, 30); // La época de Excel es el 30 de diciembre de 1899
-  const excelEpochAsUnixTimestamp = excelEpoch.getTime();
-  const missingLeapYearDay = 24 * 60 * 60 * 1000;
-  const daysToMs = (serial - 1) * 24 * 60 * 60 * 1000;
-  return new Date(excelEpochAsUnixTimestamp + daysToMs + missingLeapYearDay);
-}
 
 
 // Importar excel
@@ -330,76 +297,29 @@ exports.importTickets = async (req, res) => {
 
 // Update only assignUser
 
-exports.assignUserToTicket = async (req, res) => {
-  const ticketId = req.params.id;
-  const assignedUserId = req.body.AssignedUserID;
-  // Convertir ticketId a número si es necesario
-  const parsedTicketId = !isNaN(ticketId) ? parseInt(ticketId, 10) : null;
-  try {
-    if (parsedTicketId === null) {
-      throw new Error("Invalid ticket ID");
-    }
-    // Actualizar solo el campo AssignedUserID
-    const result = await prisma.ticket.update({
-      where: { IDTicket: parsedTicketId },
-      data: {
-        AssignedUserID: assignedUserId,
-      },
-    });
-    res.json(result);
-  } catch (error) {
-    console.error("Error assigning user to ticket:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-};
+// exports.assignUserToTicket = async (req, res) => {
+//   const ticketId = req.params.id;
+//   const assignedUserId = req.body.AssignedUserID;
+//   // Convertir ticketId a número si es necesario
+//   const parsedTicketId = !isNaN(ticketId) ? parseInt(ticketId, 10) : null;
+//   try {
+//     if (parsedTicketId === null) {
+//       throw new Error("Invalid ticket ID");
+//     }
+//     // Actualizar solo el campo AssignedUserID
+//     const result = await prisma.ticket.update({
+//       where: { IDTicket: parsedTicketId },
+//       data: {
+//         AssignedUserID: assignedUserId,
+//       },
+//     });
+//     res.json(result);
+//   } catch (error) {
+//     console.error("Error assigning user to ticket:", error);
+//     res.status(500).json({ error: "Internal server error" });
+//   }
+// };
 
-
-// Update Category
-exports.updateTicketCategory = async (req, res) => {
-  const ticketId = req.params.id;
-  const newCategory = req.body.Category;
-  // Convertir ticketId a número si es necesario
-  const parsedTicketId = !isNaN(ticketId) ? parseInt(ticketId, 10) : null;
-  try {
-    if (parsedTicketId === null) {
-      throw new Error("Invalid ticket ID");
-    }
-    // Actualizar solo el campo Category
-    const result = await prisma.ticket.update({
-      where: { IDTicket: parsedTicketId },
-      data: {
-        Category: newCategory,
-      },
-    });
-    res.json(result);
-  } catch (error) {
-    console.error("Error updating ticket category:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-};
-// Update Status
-exports.updateTicketStatus = async (req, res) => {
-  const ticketId = req.params.id;
-  const newStatus = req.body.Status;
-  // Convertir ticketId a número si es necesario
-  const parsedTicketId = !isNaN(ticketId) ? parseInt(ticketId, 10) : null;
-  try {
-    if (parsedTicketId === null) {
-      throw new Error("Invalid ticket ID");
-    }
-    // Actualizar solo el campo Status
-    const result = await prisma.ticket.update({
-      where: { IDTicket: parsedTicketId },
-      data: {
-        Status: newStatus,
-      },
-    });
-    res.json(result);
-  } catch (error) {
-    console.error("Error updating ticket status:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-};
 
 exports.deleteTicket = async (req, res) => {
   try {
@@ -436,80 +356,91 @@ exports.deleteTicket = async (req, res) => {
 
 // COMMENTS
 
-// exports.createComment = async (req, res) => {
-//   const newComment = req.body;
-  
-//   try {
-//     const createdComment = await prisma.comment.create({ data: newComment });
-//     res.status(201).json(createdComment);
-//   } catch (error) {
-//     res.status(500).json({ error: 'Error creating comment' });
-//   }
-// };
+
 
 exports.createComment = async (req, res) => {
-  const { Content, TicketID } = req.body;
-  
   try {
-    const token = req.headers.authorization; // Assuming the access token is provided in the Authorization header
-    if (!token) {
-      return res.status(401).json({ error: 'Access token is missing' });
+    console.log('Request Body:', req.body);
+    const { Content, TicketID } = req.body;
+
+    // Input validation
+    if (!Content || !TicketID) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        details: 'Content and TicketID are required'
+      });
     }
 
-    // Fetch user information from the /userinfo endpoint using the access token
-    const userInfoResponse = await axios.get('https://dev-so03q0yu6n6ltwg2.us.auth0.com/userinfo', {
-      headers: {
-        Authorization: token,
-      },
+    // Get user from Auth0
+    const token = req.headers.authorization;
+    if (!token) {
+      return res.status(401).json({ error: 'Access token missing' });
+    }
+
+    // Get Auth0 user info
+    const userInfoResponse = await axios.get(
+      'https://dev-so03q0yu6n6ltwg2.us.auth0.com/userinfo',
+      { headers: { Authorization: token } }
+    );
+    console.log('Auth0 User:', userInfoResponse.data);
+
+    // Get backend user
+    const userResponse = await axios.get(
+      `https://ci-ehelpdesk-be.azurewebsites.net/api/users/?email=${userInfoResponse.data.email}`,
+      { headers: { Authorization: token } }
+    );
+    console.log('Backend User:', userResponse.data);
+
+    if (!userResponse.data?.[0]) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // First verify user exists in database
+    const userId = parseInt(userResponse.data[0].IDUser);
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
     });
 
-    console.log("userInfoResponse",userInfoResponse)
+    if (!user) {
+      // Create user if doesn't exist
+      await prisma.user.create({
+        data: {
+          id: userId,
+          email: userInfoResponse.data.email,
+          username: userResponse.data[0].Username || userInfoResponse.data.email
+        }
+      });
+    }
 
-    const userEmail = userInfoResponse.data.email; // Get the user's email from the response
-
-    // Fetch user data from your backend using the user's email and access token
-    const userResponse = await axios.get(`https://ci-ehelpdesk-be.azurewebsites.net/api/users/?email=${userEmail}`, {
-      headers: {
-        Authorization: token,
-      },
-    });
-
-    console.log("USER RESPONSE", userResponse.data[0].IDUser)
-    const { IDUser } = userResponse.data[0]; // Assuming the user ID is available in the response data
-
-    // Create the comment and associate it with the user retrieved from the database
-    const createdComment = await prisma.comment.create({
+    // Create comment
+    const comment = await prisma.comment.create({
       data: {
-        Content,
-        Ticket: { connect: { IDTicket: TicketID } },
-        User: { connect: { IDUser } }, // Assign the user to the comment
+        content: Content,
+        ticket_id: parseInt(TicketID),
+        user_id: userId
       },
       include: {
-        User: true, // Include the user information in the response
-      },
+        user: {
+          select: {
+            username: true,
+            email: true
+          }
+        }
+      }
     });
-    
-    // Send the response with the created comment and user information
-    res.status(201).json(createdComment);
+
+    return res.status(201).json(comment);
+
   } catch (error) {
-    console.error('Error creating comment:', error);
-    res.status(500).json({ error: 'Error creating comment' });
+    console.error('Comment creation error:', error);
+    return res.status(500).json({
+      error: 'Failed to create comment',
+      details: error.message
+    });
   }
 };
 
-// Borra tickets y borra comentarios
-exports.deleteTicketsAndComents = async (req, res) => {
-  await prisma.comment.deleteMany({});
-  console.log("Todos los comentarios han sido eliminados.");
 
-  // Paso 2: Eliminar todos los tickets existentes
-  await prisma.ticket.deleteMany({});
-  console.log("Todos los tickets existentes han sido eliminados.");
-
-  // Paso 3: Reiniciar los IDs de Ticket y Comment si estás usando PostgreSQL
-  await prisma.$executeRaw`ALTER SEQUENCE "Ticket_IDTicket_seq" RESTART WITH 1;`;
-  await prisma.$executeRaw`ALTER SEQUENCE "Comment_IDComment_seq" RESTART WITH 1;`;
-}
 
 
 exports.getComments = async (req, res) => {
@@ -560,35 +491,55 @@ exports.updateComment = async (req, res) => {
 };
 
 exports.deleteComment = async (req, res) => {
-  const { id } = req.params;
-  
   try {
-    const deletedComment = await prisma.comment.delete({
-      where: {
-        IDComment: Number(id),
-      },
+    const commentId = parseInt(req.params.id);
+
+    if (isNaN(commentId)) {
+      return res.status(400).json({ 
+        error: 'Invalid comment ID format' 
+      });
+    }
+
+    // Check if comment exists
+    const comment = await prisma.comment.findUnique({
+      where: { id: commentId }
     });
 
-    res.status(200).json({ message: 'Comentario eliminado exitosamente' });
+    if (!comment) {
+      return res.status(404).json({ 
+        error: `Comment with ID ${commentId} not found` 
+      });
+    }
+
+    // Delete any associated files/images first
+    await prisma.file.deleteMany({
+      where: { comment_id: commentId }
+    });
+
+    await prisma.image.deleteMany({
+      where: { comment_id: commentId }
+    });
+
+    // Delete the comment
+    await prisma.comment.delete({
+      where: { id: commentId }
+    });
+
+    return res.status(200).json({ 
+      message: 'Comment deleted successfully' 
+    });
+
   } catch (error) {
-    res.status(500).json({ error: 'Error al eliminar el comentario' });
+    console.error('Error deleting comment:', error);
+    return res.status(500).json({
+      error: 'Failed to delete comment',
+      details: error.message
+    });
   }
 };
 
-exports.getCommentsForTicket = async (req, res) => {
-  try {
-    const ticketId = parseInt(req.params.id);
-    const comments = await prisma.comment.findMany({
-      where: {
-        TicketID: ticketId,
-      },
-    });
-    res.status(200).json(comments);
-  } catch (error) {
-    console.error('Error getting comments for the ticket:', error);
-    res.status(500).json({ error: 'Error fetching comments for the ticket.' });
-  }
-};
+
+
 
 // USERS
 
@@ -634,7 +585,7 @@ exports.getUser = async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: {
-        IDUser: userId,
+        id: userId,
       },
     });
 
@@ -695,16 +646,16 @@ exports.getRolesForUser = async (req, res) => {
 };
 
 exports.createUser = async (req, res) => {
-  const { Username, FirstName, LastName, Email, UserRole } = req.body;
+  const { username, first_name, last_name, email, user_role } = req.body;
 
   try {
     // Create the user
     const newUser = await prisma.user.create({
       data: {
-        Username,
-        FirstName,
-        LastName,
-        Email,
+        username,
+        first_name,
+        last_name,
+        email,
       },
     });
  
@@ -951,98 +902,10 @@ exports.getUsersInformation = async (req, res) =>{
 
 }
 
-// UPLOAD FILE
 
-exports.getAttachmentsForTicket = async (req, res) => {
-  try {
-    const ticketId = parseInt(req.params.id);
-    // Assuming you have a File model in your Prisma schema
-    const attachments = await prisma.File.findMany({
-      where: {
-        TicketID: ticketId,
-      },
-    });
-    res.status(200).json(attachments);
-  } catch (error) {
-    console.error('Error getting attachments for the ticket:', error);
-    res.status(500).json({ error: 'Error fetching attachments for the ticket.' });
-  }
-};
 // Assuming you're using Prisma for DB interaction
 
-exports.uploadFile = async (req, res) => {
-  try {
-    // Log the incoming request to help with debugging
-    console.log('Received request:', req.files, req.params.id);
 
-    // Ensure files is an array, handle single file uploads as well
-    const files = Array.isArray(req.files?.files) ? req.files.files : [req.files?.files];
-    
-    // Validate ticketId
-    const ticketId = parseInt(req.params.id);
-    if (isNaN(ticketId)) {
-      return res.status(400).json({ message: 'Invalid Ticket ID.' });
-    }
-
-    // Ensure that files are provided
-    if (!files || files.length === 0) {
-      return res.status(400).json({ message: 'No files provided.' });
-    }
-
-    // Azure Storage Setup
-    const blobServiceClient = BlobServiceClient.fromConnectionString('DefaultEndpointsProtocol=https;AccountName=ehelpdeskstorage;AccountKey=imH5j/DMxOnA/NLueqxKQLbpgW/Eim95pCTxvMd+Q4VT1AyZHy7W6VGvxZ9YEyLc2adddXV5lEA6+AStl7GKig==;EndpointSuffix=core.windows.net');
-    const containerClient = blobServiceClient.getContainerClient('ehelpdesk');
-
-    const azureStorageUrls = [];
-
-    // Iterate through the array of files and upload them
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-
-      // Ensure file has necessary attributes
-      if (!file || !file.name || !file.data) {
-        console.error('Invalid file data:', file);
-        return res.status(400).json({ message: 'Invalid file data.' });
-      }
-
-      const blobName = `${uuidv4()}_${file.name}`;
-      const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-
-      // Upload the file to Azure Storage
-      await blockBlobClient.uploadData(file.data, {
-        blobHTTPHeaders: {
-          blobContentType: file.mimetype || 'application/octet-stream', // Default mimetype fallback
-        },
-      });
-
-      const azureStorageUrl = blockBlobClient.url;
-      azureStorageUrls.push(azureStorageUrl);
-
-      // Create a new File entry in the database
-      try {
-        await prisma.File.create({
-          data: {
-            url: azureStorageUrl,
-            TicketID: ticketId,
-            name: file.name || 'Unnamed File', // Fallback in case file name is missing
-          },
-        });
-      } catch (dbError) {
-        console.error('Error saving file to the database:', dbError);
-        return res.status(500).json({ message: 'Error saving file to the database.' });
-      }
-    }
-
-    // Respond with success and the URLs of the uploaded files
-    res.status(200).json({
-      message: 'Files uploaded successfully.',
-      azureStorageUrls,
-    });
-  } catch (error) {
-    console.error('Error uploading files:', error);
-    res.status(500).json({ message: 'Internal server error uploading files.' });
-  }
-};
 
 
 // exports.uploadFile = async (req, res) => {
@@ -1095,77 +958,7 @@ exports.uploadFile = async (req, res) => {
 //   }
 // };
 
-exports.deleteAttachment = async (req, res) => {
-  try {
-    const ticketId = parseInt(req.params.id);
-    const attachmentId = parseInt(req.params.attachmentId);
 
-    console.log('Request object:', req);
-    console.log('ticketId:', ticketId);
-    console.log('attachmentId:', attachmentId);
-
-    if (isNaN(attachmentId)) {
-      return res.status(400).json({ error: 'Invalid attachmentId' });
-    }
-
-    // Assuming you have a File model in your Prisma schema
-    const deletedAttachment = await prisma.File.findUnique({
-      where: {
-        IDFile: attachmentId,
-        TicketID: ticketId,
-      },
-    });
-
-    if (!deletedAttachment) {
-      return res.status(404).json({ error: 'Attachment not found' });
-    }
-
-    // Azure Storage Setup
-    const blobServiceClient = BlobServiceClient.fromConnectionString('DefaultEndpointsProtocol=https;AccountName=ehelpdeskstorage;AccountKey=imH5j/DMxOnA/NLueqxKQLbpgW/Eim95pCTxvMd+Q4VT1AyZHy7W6VGvxZ9YEyLc2adddXV5lEA6+AStl7GKig==;EndpointSuffix=core.windows.net');
-    const containerClient = blobServiceClient.getContainerClient('ehelpdesk');
-
-    // Extract the blob name from the URL
-    const blobUrlParts = deletedAttachment.url.split('/');
-    const blobName = decodeURIComponent(blobUrlParts[blobUrlParts.length - 1]);
-
-    // Log the blob URL and name for debugging
-    console.log('Blob URL:', deletedAttachment.url);
-    console.log('Blob Name:', blobName);
-
-    // Retry mechanism with a maximum of 3 attempts
-    const maxRetries = 3;
-    let retries = 0;
-
-    while (retries < maxRetries) {
-      try {
-        // Delete the blob from Azure Storage
-        const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-        await blockBlobClient.delete();
-
-        // Delete the attachment record from your database
-        await prisma.File.delete({
-          where: {
-            IDFile: attachmentId,
-            TicketID: ticketId,
-          },
-        });
-
-        console.log('Deleted attachment:', deletedAttachment);
-        res.status(204).send(); // 204 No Content: Successful deletion
-        return; // Exit the function if successful
-      } catch (error) {
-        console.error('Error deleting attachment. Retrying...', error);
-        retries++;
-      }
-    }
-
-    console.error('Max retries reached. Unable to delete attachment.');
-    res.status(500).json({ error: 'Internal Server Error' });
-  } catch (error) {
-    console.error('Error deleting attachment:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
-};
 
 
 
@@ -1319,6 +1112,7 @@ exports.fetchIoTDevices = async (req, res, filterText) => {
 };
 
 exports.fetchCurrentUser = async (req, res) => {
+  console.log("Fetching current user...", req.headers.authorization);
   try {
     // Get access token from request headers
     const accessToken = req.headers.authorization.split(' ')[1];
@@ -1332,6 +1126,7 @@ exports.fetchCurrentUser = async (req, res) => {
 
     // Return user data
     res.json(response.data);
+    console.log("User data:", response.data);
   } catch (error) {
     console.error('Error fetching user:', error.message);
     res.status(500).json({ error: 'An error occurred while fetching user' });
@@ -2372,13 +2167,14 @@ exports.getCompanyFromDealer = async (req, res) => {
     await client.connect();
 
     const query = `
-      SELECT "FMS_CUST_MST"."USER_NAME"
-      FROM "FMS_CUST_MST"
-      WHERE "FMS_CUST_MST"."USER_CD" IN (
-      SELECT "dealer_cust_rel"."cust_id"
-      FROM "dealer_cust_rel"
-      WHERE "dealer_cust_rel"."dealer_id"= $1
-      );            
+          SELECT "FMS_CUST_MST"."USER_NAME"
+    FROM "FMS_CUST_MST"
+    WHERE "FMS_CUST_MST"."USER_CD" IN (
+        SELECT "dealer_cust_rel"."cust_id"
+        FROM "dealer_cust_rel"
+        WHERE "dealer_cust_rel"."dealer_id" = $1
+    )
+    ORDER BY "FMS_CUST_MST"."USER_NAME" ASC;
     `;
 
     const result = await client.query(query, [dealerId]);
@@ -2393,122 +2189,6 @@ exports.getCompanyFromDealer = async (req, res) => {
     res.status(500).json({ error: 'Internal Server Error' });
   } finally {
     await client.end();
-  }
-};
-
-
-
-// GUEST 
-
-exports.createGuestTicket = async (req, res) => {
-  const { yourName, yourEmail, vehicleIdOrDriverName, reportedBy, companyName, issue, issueTime } = req.body;
-  try {
-    const newTicket = await prisma.guestTicket.create({
-      data: {
-        yourName,
-        yourEmail,
-        vehicleIdOrDriverName,
-        reportedBy,
-        companyName,
-        issue,
-        issueTime: new Date(issueTime),
-      },
-    });
-    res.status(201).json(newTicket);
-  } catch (error) {
-    res.status(500).json({ error: 'Error creating ticket', details: error.message });
-  }
-};
-
-
-exports.deleteGuestTicket = async (req, res) => {
-  const { IDGuestTicket } = req.params;
-  try {
-    const deletedTicket = await prisma.guestTicket.delete({
-      where: {
-        IDGuestTicket: parseInt(IDGuestTicket),
-      },
-    });
-    res.status(200).json(deletedTicket);
-  } catch (error) {
-    res.status(500).json({ error: 'Error deleting ticket', details: error.message });
-  }
-};
-
-
-exports.getGuestTickets = async (req, res) => {
-  try {
-    const tickets = await prisma.guestTicket.findMany();
-    res.status(200).json(tickets);
-  } catch (error) {
-    res.status(500).json({ error: 'Error fetching tickets', details: error.message });
-  }
-};
-
-
-// -----------------
-
-
-exports.approveGuestTicket = async (req, res) => {
-  const { IDGuestTicket } = req.params;
-  console.log("IDGuestTicket:", IDGuestTicket); // Verificar que IDGuestTicket se está recibiendo correctamente
-
-  try {
-    // Obtener el ticket de invitado
-    const guestTicket = await prisma.guestTicket.findUnique({
-      where: { IDGuestTicket: parseInt(IDGuestTicket) },
-      include: {
-        Files: true,
-        Images: true
-      }
-    });
-
-    console.log("Guest Ticket:", guestTicket); // Verificar que se obtiene el guestTicket correctamente
-
-    if (!guestTicket) {
-      return res.status(404).json({ error: "Guest ticket not found" });
-    }
-
-    // Crear un nuevo ticket en el modelo principal
-    const newTicket = {
-      Title: guestTicket.issue,
-      Description: guestTicket.issue,
-      Priority: "Medium", 
-      Status: "To Do",
-      VehicleID: guestTicket.vehicleIdOrDriverName,
-      driversName: guestTicket.vehicleIdOrDriverName,
-      Reporter: guestTicket.reportedBy,
-      Companyname: guestTicket.companyName,
-      Email: guestTicket.yourEmail,
-      incidentDate: guestTicket.issueTime,
-      Category: "Guess ticket", // Ajusta esto según tus necesidades
-      Files: {
-        connect: guestTicket.Files.map(file => ({ id: file.id }))
-      },
-      Images: {
-        connect: guestTicket.Images.map(image => ({ id: image.id }))
-      }
-    };
-
-    console.log("New Ticket Data:", newTicket); // Verificar los datos del nuevo ticket antes de crearlo
-
-    const createdTicket = await prisma.ticket.create({
-      data: newTicket
-    });
-
-    console.log("Created Ticket:", createdTicket); // Verificar que el ticket se creó correctamente
-
-    // Eliminar el guest ticket
-    await prisma.guestTicket.delete({
-      where: { IDGuestTicket: parseInt(IDGuestTicket) }
-    });
-
-    console.log("Guest Ticket Deleted"); // Confirmar que el guest ticket fue eliminado
-
-    res.status(201).json(createdTicket);
-  } catch (error) {
-    console.error("Error approving guest ticket:", error); // Imprimir el error para depuración
-    res.status(500).json({ error: "Failed to approve guest ticket" });
   }
 };
 
@@ -2726,11 +2406,11 @@ exports.getCategoryCount = async (req, res) => {
   try {
     const categoryCounts = await prisma.$queryRaw`
       SELECT 
-        COALESCE(t."Category", 'Uncategorized') as name,
+        COALESCE(t."category", 'uncategorized') as name,
         CAST(COUNT(*) AS INTEGER) as value
       FROM "Ticket" t
-      WHERE t."Category" IS NOT NULL
-      GROUP BY t."Category"
+      WHERE t."category" IS NOT NULL
+      GROUP BY t."category"
       ORDER BY value DESC
     `;
 
@@ -2744,493 +2424,71 @@ exports.getCategoryCount = async (req, res) => {
 };
 
 
-// Fetch all customers for the filter in the navbar
-
-
-exports.getCustomers = async (req, res) => {
-  const client = new Client({
-    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
-    port: 5432,
-    database: 'multi',
-    user: 'gmtp',
-    password: 'MUVQcHz2DqZGHvZh'
-  });
-
-  try {
-    await client.connect(); // Establish connection
-
-    const query = `SELECT DISTINCT "USER_CD", "USER_NAME" FROM "public"."FMS_CUST_MST"`;
-    const result = await client.query(query);
-
-    await client.end(); // Close connection
-
-    return res.status(200).json(result.rows);
-  } catch (err) {
-    console.error('Error fetching customers:', err.message);
-    return res.status(500).json({ error: 'Database query failed', details: err.message });
-  }
-};
-
-exports.getSites = async (req, res) => {
-  const { customer } = req.query;
-  if (!customer) {
-    console.error("Error: Missing customer ID in request");
-    return res.status(400).json({ error: "Customer ID is required" });
-  }
-
-  // Convert customer to an integer if necessary
-  const customerId = parseInt(customer, 10);
-  if (isNaN(customerId)) {
-    console.error("Error: customer ID must be an integer, received:", customer);
-    return res.status(400).json({ error: "Invalid customer ID" });
-  }
+exports.getTicketsByLocation = async (req, res) => {
+  console.log('Fetching tickets by location...');
+  console.log('Received query parameters:', req.query);
   
   try {
-    const query = `
-      SELECT DISTINCT FLM."LOCATION_CD", FLM."NAME" 
-      FROM "FMS_USR_VEHICLE_REL" FUVR
-      JOIN "FMS_LOC_MST" FLM ON FUVR."LOC_CD" = FLM."LOCATION_CD"
-      WHERE FUVR."USER_CD" = $1
-    `;
+    const { site_id } = req.query;
 
-    //console.log(`Executing Query: ${query} with customer ID: ${customerId}`);
-    
-
-    const client = new Client({
-      host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
-      port: 5432,
-      database: 'multi',
-      user: 'gmtp',
-      password: 'MUVQcHz2DqZGHvZh'
-    });
-
-    await client.connect();
-    const result = await client.query(query, [customerId]);
-    await client.end();
-
-    //console.log("Fetched Sites:", result.rows);
-    return res.status(200).json(result.rows);
-  } catch (err) {
-    console.error("Database Query Failed:", err.message);
-    return res.status(500).json({ error: "Database query failed", details: err.message });
-  }
-};
-
-exports.getVehicles = async (req, res) => {
-  const { site, customer, gmptCode } = req.query;
-
-  if (!customer && !gmptCode) {
-    return res.status(400).json({ error: "Customer or GMPT Code is required" });
-  }
-
-  const client = new Client({
-    host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
-    port: 5432,
-    database: "multi",
-    user: "gmtp",
-    password: "MUVQcHz2DqZGHvZh",
-  });
-
-  try {
-    await client.connect();
-    
-    // 🔹 Step 1: Get VEHICLE_CD First (If Searching by GMPT)
-    let vehicleCDs = [];
-    if (gmptCode) {
-      const cdQuery = `SELECT "VEHICLE_CD" FROM "FMS_VEHICLE_MST" WHERE "VEHICLE_ID" = $1;`;
-      const cdResult = await client.query(cdQuery, [gmptCode]);
-      vehicleCDs = cdResult.rows.map(row => row.VEHICLE_CD);
-    } else if (site) {
-      const siteQuery = `SELECT "VEHICLE_CD" FROM "FMS_USR_VEHICLE_REL" WHERE "LOC_CD" = $1;`;
-      const siteResult = await client.query(siteQuery, [site]);
-      vehicleCDs = siteResult.rows.map(row => row.VEHICLE_CD);
-    } else {
-      const customerQuery = `SELECT "VEHICLE_CD" FROM "FMS_USR_VEHICLE_REL" WHERE "USER_CD" = $1;`;
-      const customerResult = await client.query(customerQuery, [customer]);
-      vehicleCDs = customerResult.rows.map(row => row.VEHICLE_CD);
-    }
-
-    if (vehicleCDs.length === 0) {
-      return res.status(404).json({ error: "No vehicles found" });
-    }
-
-    //console.log("Fetched VEHICLE_CD:", vehicleCDs);
-
-    // 🔹 Step 2: Fetch Basic Vehicle Info
-    const vehicleInfo = await fetchVehicleInfo(client, vehicleCDs);
-
-    // 🔹 Step 3: Fetch Additional Data (Master Codes & Blacklisted Drivers)
-    const [masterCodes, blacklistedDrivers] = await Promise.all([
-      fetchMasterCodes(client, vehicleCDs), // ✅ Using VEHICLE_CD now
-      fetchBlacklistedDrivers(client, vehicleCDs) // ✅ Using VEHICLE_CD now
-    ]);
-
-    await client.end();
-
-    // 🔹 Step 4: Merge Additional Data into Vehicle Info
-    const responseData = vehicleInfo.map(vehicle => ({
-      ...vehicle,
-      master_codes: masterCodes[vehicle.VEHICLE_CD] || [],
-      blacklisted_drivers: blacklistedDrivers[vehicle.VEHICLE_CD] || []
-    }));
-
-    return res.status(200).json(responseData);
-
-  } catch (err) {
-    console.error("Database Query Failed:", err.message);
-    return res.status(500).json({ error: "Database query failed", details: err.message });
-  }
-};
-
-// ✅ Fetch Basic Vehicle Info
-async function fetchVehicleInfo(client, vehicleCDs) {
-  const query = `
-            SELECT 
-            fvm."VEHICLE_CD",
-            jsonb_build_object(
-                'vehicleName', ev."hire_no",
-                'serialNumber', ev."serial_no",
-                'gmptCode', fvm."VEHICLE_ID",
-                'firmwareVersion', ev."firmware_ver",
-                'screenVersion', ev."product_type",
-                'expansionVersion', ev."exp_mod_ver",
-                'lastConnection', COALESCE(TO_CHAR(fvm."LAST_EOS", 'DD/MM/YYYY HH24:MI'), 'N/A'),
-                'department', fdm."DEPT_NAME",
-                'vorSetting', fvm."vor_setting",
-                'lockoutCode', fvm."lockout_code",
-                'impactLockout', fvm."IMPACT_LOCKOUT",
-                'surveyTimeout', fvm."survey_timeout",
-                'seatIdle', fvm."seat_idle",
-                'redImpactThreshold', ROUND(CAST(0.00388 * SQRT(COALESCE(fvm."FSSS_BASE", 0) * COALESCE(fvm."FSSSMULTI", 0) * 10) AS NUMERIC), 3),
-                'impactRecalibrationDate', COALESCE(TO_CHAR(ews."impact_recalibration_date", 'DD/MM/YYYY HH24:MI'), 'N/A'),
-                'preopSchedule', ews."preop_schedule",
-                'simNumber', fvm."CCID",
-                'vehicleType', fvm."VEHICLE_TYPE_CD",
-                'vehicleModel', vt."VEHICLE_TYPE",
-                'status', COALESCE(( 
-                    SELECT CASE 
-                        WHEN MAX(fcv."TIME_STAMP") < NOW() - INTERVAL '2 hours' THEN 'Offline'
-                        ELSE 'Online'
-                    END
-                    FROM "FMS_CARD_VERIFICATION" fcv
-                    WHERE fcv."VEH_CD" = fvm."VEHICLE_CD"
-                    AND DATE(fcv."TIME_STAMP") = CURRENT_DATE
-                ), 'Unknown'),
-                'fullLockoutEnabled', fvm."full_lockout_enabled",
-                'fullLockoutTimeout', fvm."full_lockout_timeout",
-                -- Added Customer and Site Names:
-                'customerName', cust."USER_NAME",
-                'siteName', loc."NAME"
-            ) AS vehicle_info
-        FROM "equipment_view" ev
-        LEFT JOIN "FMS_VEHICLE_MST" fvm ON ev."gmtp_id" = fvm."VEHICLE_ID"
-        LEFT JOIN "FMS_USR_VEHICLE_REL" fuvr ON fvm."VEHICLE_CD" = fuvr."VEHICLE_CD"
-        LEFT JOIN "FMS_DEPT_MST" fdm ON fuvr."DEPT_CD" = fdm."DEPT_CD"
-        -- If the customer key in FMS_USR_VEHICLE_REL is not USER_CD, adjust the column name below.
-        LEFT JOIN "FMS_CUST_MST" cust ON fuvr."USER_CD" = cust."USER_CD"
-        -- If the site key in FMS_USR_VEHICLE_REL is different, adjust the column name below.
-        LEFT JOIN "FMS_LOC_MST" loc ON fuvr."LOC_CD" = loc."LOCATION_CD"
-        LEFT JOIN "equipment_website_settings" ews ON fvm."VEHICLE_ID" = ews."gmtp_id"
-        LEFT JOIN "FMS_VEHICLE_TYPE_MST" vt ON fvm."VEHICLE_TYPE_CD" = vt."VEHICLE_TYPE_CD"
-        WHERE fvm."VEHICLE_CD" = ANY($1);
-
-  `;
-
-  const result = await client.query(query, [vehicleCDs]);
-  console.log('Fetching new vehicles...',result.rows)
-
-  return result.rows;
-}
-
-// ✅ Fetch Master Codes using VEHICLE_CD
-async function fetchMasterCodes(client, vehicleCDs) {
-  const query = `
-    SELECT fvo."VEHICLE_CD", jsonb_build_object('masterCodeUser', fum."USER_NAME") AS master_code
-    FROM "FMS_VEHICLE_OVERRIDE" fvo
-    JOIN "FMS_USR_MST" fum ON fvo."USER_CD" = fum."USER_CD"
-    WHERE fvo."VEHICLE_CD" = ANY($1);
-  `;
-
-  const result = await client.query(query, [vehicleCDs]);
-  return groupByVehicle(result.rows, "master_code");
-}
-
-// ✅ Fetch Blacklisted Drivers using VEHICLE_CD
-async function fetchBlacklistedDrivers(client, vehicleCDs) {
-  const query = `
-    SELECT fdb."VEHICLE_CD", jsonb_build_object('blacklistedDriver', fum_blacklist."USER_NAME") AS blacklisted_driver
-    FROM "FMS_DRIVER_BLKLST" fdb
-    JOIN "FMS_USR_MST" fum_blacklist ON fdb."USER_CD" = fum_blacklist."USER_CD"
-    WHERE fdb."VEHICLE_CD" = ANY($1);
-  `;
-
-  const result = await client.query(query, [vehicleCDs]);
-  return groupByVehicle(result.rows, "blacklisted_driver");
-}
-
-// ✅ Utility Function to Group Data by VEHICLE_CD
-function groupByVehicle(rows, field) {
-  return rows.reduce((acc, row) => {
-    if (!acc[row.VEHICLE_CD]) acc[row.VEHICLE_CD] = [];
-    acc[row.VEHICLE_CD].push(row[field]);
-    return acc;
-  }, {});
-}
-
-
-exports.getTicketsByLocation = async (req, res) => {
-  console.log('Fetching tickets by location...'); // Log para verificar que la función se está llamando
-  console.log('Received query parameters:', req.query); // Log the received query parameters
-  try {
-      const { locationCD } = req.query;  // Obtener el parámetro desde la URL
-
-      if (!locationCD) {
-          return res.status(400).json({ message: 'Missing locationCD parameter' });
-      }
-
-      // Convertir a número
-      const locationId = parseInt(locationCD);
-
-      if (isNaN(locationId)) {
-          return res.status(400).json({ message: 'Invalid locationCD parameter' });
-      }
-
-      // Consultar los tickets con el `LocationCD` especificado
-      const tickets = await prisma.ticket.findMany({
-          where: {
-              LocationCD: locationId
-          },
-          include: {
-              Customer: {
-                  select: { CustomerName: true }
-              },
-              AssignedUser: {
-                  select: { Username: true }
-              }
-          }
+    if (!site_id) {
+      return res.status(400).json({ 
+        message: 'Missing site_id parameter' 
       });
-
-      res.status(200).json(tickets);
-  } catch (error) {
-      console.error('Error fetching tickets by location:', error);
-      res.status(500).json({ message: 'Internal server error fetching tickets by location' });
-  }
-};
-
-
-const dbConfig = {
-  host: '192.168.0.28',
-  user: 'postgres',
-  password: 'admin',
-  database: 'E-helpdesk',
-  port: 5432,
-};
-
-exports.getAvailableDates = async (req, res) => {
-  const client = new Client(dbConfig);
-
-  try {
-    await client.connect();
-
-    const query = `
-    SELECT DISTINCT query_execution_date AS date
-    FROM "vehicle_info"
-    ORDER BY date DESC;
-  `;
-
-    const result = await client.query(query);
-    const dates = result.rows.map((row) => row.date);
-
-    res.json(dates);
-  } catch (error) {
-    console.error('Error fetching available dates:', error.message);
-    res.status(500).json({ error: 'Failed to fetch available dates' });
-  } finally {
-    await client.end();
-  }
-};
-
-
-
-
-
-
-exports.getAvailableTimes = async (req, res) => {
-  const { date } = req.query;
-  const client = new Client(dbConfig);
-
-  try {
-    await client.connect();
-
-    const query = `
-      SELECT MIN(snapshot_id) AS id, TO_CHAR(query_execution_date, 'HH24:MI') AS time
-      FROM vehicle_info
-      WHERE DATE(query_execution_date) = $1
-      GROUP BY TO_CHAR(query_execution_date, 'HH24:MI')
-      ORDER BY time ASC;
-    `;
-
-    const result = await client.query(query, [date]);
-    const times = result.rows.map(row => ({
-      ID: row.id,
-      time: row.time,
-    }));
-
-    res.json(times);
-  } catch (error) {
-    console.error('Error fetching times:', error.message);
-    res.status(500).json({ error: 'Failed to fetch times' });
-  } finally {
-    await client.end();
-  }
-};
-
-
-
-
-exports.getVehicleSnapshots = async (req, res) => {
-  console.log('📦 Snapshot route hit!');
-  // Get snapshot time filters
-  const { format } = require('date-fns');
-  const time1 = req.query.time1 || req.query.TIME1;
-  const time2 = req.query.time2 || req.query.TIME2;
-  const date1 = req.query.date1 || req.query.Date1;
-  const date2 = req.query.date2 || req.query.Date2;
-  // Get vehicle filters
-  const customer = req.query.customer;
-  const site = req.query.site; // optional
-  const gmptCode = req.query.gmptCode; // optional
-
-  if (!time1 || !time2 || !customer) {
-    return res.status(400).json({ error: 'Missing required snapshot times or customer filter' });
-  }
-
-  // Convert date objects to the expected string format.
-  // If date1 and date2 are Date objects, format them; if they're strings, you may need to parse them first.
-  const formattedDate1 = format(new Date(date1), 'yyyy-MM-dd');
-  const formattedDate2 = format(new Date(date2), 'yyyy-MM-dd');
-
-  const client = new Client(dbConfig);
-  try {
-    await client.connect();
-
-    const customerInt = parseInt(customer);
-    const queryParams = [formattedDate1, formattedDate2, time1, time2, customerInt];
-    // Build extra conditions
-    let extraConditions = ` AND "cust_id" = $5`;
-    if (site) {
-      const siteInt = parseInt(site);
-      extraConditions += ` AND "site_id" = $6`;
-      queryParams.push(siteInt);
     }
-    if (gmptCode) {
-      extraConditions += ` AND "gmptCode" = $${queryParams.length + 1}`;
-      queryParams.push(gmptCode);
+
+    // Parse site_id and handle potential JSON string
+    let locationId;
+    try {
+      // Check if site_id is a JSON string
+      const parsedSite = JSON.parse(site_id);
+      locationId = parsedSite.site_id || parseInt(site_id);
+    } catch {
+      // If not JSON, try direct parsing
+      locationId = parseInt(site_id);
     }
-    
-    console.log('costumer',customer)
-    console.log('site',site)
-    console.log('gmptCode',gmptCode)
-    console.log('date1',date1)
-    console.log('time1',time1)
-    console.log('date2',date2)
-    console.log('time2',time2)
-    
 
-    // Query snapshots within the time ranges (each time range is start time plus 58 minutes)
-    const query = `
-      SELECT DISTINCT ON (vehicle_cd, snapshot_time) *
-      FROM (
-        SELECT *,
-              TO_CHAR(query_execution_date, 'HH24:MI') AS snapshot_time
-        FROM "vehicle_info"
-        WHERE (
-              (TO_CHAR(query_execution_date, 'YYYY-MM-DD') = $1 
-                AND TO_CHAR(query_execution_date, 'HH24:MI') = $3)
-              OR
-              (TO_CHAR(query_execution_date, 'YYYY-MM-DD') = $2 
-                AND TO_CHAR(query_execution_date, 'HH24:MI') = $4)
-              )
-              ${extraConditions}
-      ) AS sub
-      ORDER BY vehicle_cd, snapshot_time, query_execution_date;
+    if (isNaN(locationId)) {
+      return res.status(400).json({ 
+        message: 'Invalid site_id parameter' 
+      });
+    }
 
-
-
-    `;
-    const result = await client.query(query, queryParams);
-    console.log('Query result rows:', result.rows);
-
-    const pairedSnapshots = result.rows.reduce((acc, row) => {
-      const vCode = row.vehicle_cd;
-      if (!acc[vCode]) {
-        acc[vCode] = { before: {}, after: {} };
-      }
-      if (row.snapshot_time === time1) {
-        acc[vCode].before = row;
-      } else if (row.snapshot_time === time2) {
-        acc[vCode].after = row;
-
-      }
-      return acc;
-    }, {});
-
-    console.log('Paired snapshots by vehicle_cd:', pairedSnapshots);
-    res.json(pairedSnapshots);
-  } catch (error) {
-    console.error('Error fetching snapshots:', error.message);
-    res.status(500).json({ error: 'Internal server error fetching snapshots' });
-  } finally {
-    await client.end();
-  }
-};
-
-// Utility function to add minutes to a time string (HH:MM)
-function addMinutes(timeStr, minutesToAdd) {
-  const [hours, minutes] = timeStr.split(':').map(Number);
-  const totalMinutes = hours * 60 + minutes + minutesToAdd;
-  const newHours = Math.floor(totalMinutes / 60) % 24;
-  const newMinutes = totalMinutes % 60;
-  return `${newHours.toString().padStart(2, '0')}:${newMinutes.toString().padStart(2, '0')}`;
-}
-
-
-// Utility function to add minutes to a time string (HH:MM)
-function addMinutes(timeStr, minutesToAdd) {
-  const [hours, minutes] = timeStr.split(':').map(Number);
-  const totalMinutes = hours * 60 + minutes + minutesToAdd;
-  const newHours = Math.floor(totalMinutes / 60) % 24;
-  const newMinutes = totalMinutes % 60;
-  return `${newHours.toString().padStart(2, '0')}:${newMinutes.toString().padStart(2, '0')}`;
-}
-
-
-
-
-exports.exportAllTickets = async (req, res) => {
-  console.log('Exporting all tickets...');
-  try {
     const tickets = await prisma.ticket.findMany({
-      orderBy: {
-        IDTicket: 'desc',
+      where: {
+        site_id: locationId
       },
+      include: {
+        assigned_user: {
+          select: {
+            id: true,
+            username: true
+          }
+        }
+      },
+      orderBy: {
+        created_at: 'desc'
+      }
     });
 
-    if (!tickets || tickets.length === 0) {
-      return res.status(404).json({ message: 'No tickets found.' });
-    }
+    return res.status(200).json({
+      count: tickets.length,
+      tickets: tickets
+    });
 
-    const { parse } = require('json2csv');
-    const csv = parse(tickets);
-
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename=tickets.csv');
-    return res.status(200).send(csv);
   } catch (error) {
-    console.error('Error exporting tickets:', error.message);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error('Error fetching tickets:', error);
+    return res.status(500).json({ 
+      error: 'Failed to fetch tickets',
+      details: error.message 
+    });
   }
 };
+
+
+
+
+
 
 exports.getTicketsByStatus = async (req, res) => {
   try {
@@ -3265,44 +2523,7 @@ exports.getTicketsByStatus = async (req, res) => {
   }
 };
 
-// In controllers.js
-exports.getGmptCodesBySite = async (req, res) => {
-  const { locationCD } = req.query;
 
-  if (!locationCD) {
-    return res.status(400).json({ error: 'Missing locationCD' });
-  }
-
-  const fleetiq = new Client({
-    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
-    port: 5432,
-    database: 'multi',
-    user: 'gmtp',
-    password: 'MUVQcHz2DqZGHvZh'
-  })
-  const client = new Client(fleetiq);
-  try {
-    await client.connect();
-
-    console.log("Conexión a la base de datos establecida");
-    
-    const query = `
-      SELECT "V"."VEHICLE_ID"
-      FROM "FMS_VEHICLE_MST" "V"
-      JOIN "FMS_USR_VEHICLE_REL" "R" ON "V"."VEHICLE_CD" = "R"."VEHICLE_CD"
-      WHERE "R"."LOC_CD" = $1;
-    `;
-    const result = await client.query(query, [locationCD]);
-    const codes = result.rows.map(row => row.VEHICLE_ID); // Make sure column name is lowercase
-    res.json(codes);
-  } catch (err) {
-    console.error('Error fetching GMPT codes:', err.message);
-    res.status(500).json({ error: 'Internal error fetching GMPT codes' });
-  } finally {
-    await client.end();
-  }
-  console.log("Solicitud recibida en /gmpt-codes con locationCD:", req.query.locationCD);
-};
 
 
 

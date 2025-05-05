@@ -1,65 +1,41 @@
 const express = require('express');
 const router = express.Router();
 const controllers = require('./controllers');
+const ticketControllers = require('./Tickets/controllers/')
+const vehicleControllers = require('./Vehicles/controllers/')
 const { auth } = require('express-oauth2-jwt-bearer');
+// Add this at top of routes.js
+console.log('Available vehicle controller methods:', Object.keys(vehicleControllers));
 
 
 
-// GUEST
-router.post('/createGuestTicket', controllers.createGuestTicket); 
+// Tickets
 
-router.get('/getGuestTickets', controllers.getGuestTickets); 
-
-router.delete('/deleteGuestTicket/:IDGuestTicket', controllers.deleteGuestTicket);
-
-router.post('/approveGuestTicket/:IDGuestTicket',  controllers.approveGuestTicket);
-
-
-
-// const jwtCheck = auth({
-//     audience: 'https://www.ehelpdesk.com',
-//     issuerBaseURL: `https://${process.env.DOMAIN}`,
-//     tokenSigningAlg: 'RS256'
-// });
-
-
-// router.use(jwtCheck);
-
-// router.get('/customers', controllers.requireReadCustomerPermission, controllers.getCustomers);
-// router.get('/tickets', controllers.requireReadTicketPermission, controllers.getTickets);
-// router.get('/ticketspagination', controllers.requireReadTicketPermission, controllers.getTicketsPagination);
-
-// router.get('/tickets/:id', controllers.requireReadTicketPermission, controllers.getTicket);
-// router.get('/tickets/:id/comments', controllers.requireReadTicketPermission, controllers.getCommentsForTicket);
-// router.get('/tickets/:id/attachments', controllers.requireReadTicketPermission, controllers.getAttachmentsForTicket);
-// router.post('/tickets/:id/attachments', controllers.requireReadTicketPermission, controllers.uploadFile);
-// router.post('/tickets', controllers.requireReadTicketPermission, controllers.createTicket)
-// router.post('/import', controllers.requireReadTicketPermission, controllers.importTickets)
-// router.get('/deleteTicketsAndComents', controllers.requireReadTicketPermission, controllers.deleteTicketsAndComents)
-
-// router.delete('/tickets/:id/attachments/:attachmentId', controllers.requireReadTicketPermission, controllers.deleteAttachment);
-// router.delete('/tickets/:id', controllers.requireReadTicketPermission, controllers.deleteTicket)
-
-
-router.get('/customers',  controllers.getCustomers);
-router.get('/tickets',  controllers.getTickets);
+router.get('/tickets',  ticketControllers.getTickets);
+router.get('/ticket/site', controllers.getTicketsByLocation);
+router.get('/tickets/export', ticketControllers.exportAllTickets);
+router.get('/tickets/filterByStatus', controllers.getTicketsByStatus);
 router.get('/ticketspagination', controllers.getTicketsPagination);
 
-router.get('/tickets/:id', controllers.getTicket);
-router.get('/tickets/:id/comments', controllers.getCommentsForTicket);
-router.get('/tickets/:id/attachments', controllers.getAttachmentsForTicket);
-router.post('/tickets/:id/attachments', controllers.uploadFile);
-router.post('/tickets', controllers.createTicket)
+
+router.get('/tickets/:id/comments', ticketControllers.getCommentsForTicket);
+router.get('/tickets/:id/attachments', ticketControllers.getAttachmentsForTicket);
+router.post('/tickets/:id/attachments', ticketControllers.uploadFile);
+router.delete('/tickets/:id/attachments/:attachmentId', ticketControllers.deleteAttachment);
+
 router.post('/import', controllers.importTickets)
-router.get('/deleteTicketsAndComents', controllers.deleteTicketsAndComents)
 
-router.delete('/tickets/:id/attachments/:attachmentId', controllers.deleteAttachment);
-router.delete('/tickets/:id', controllers.deleteTicket)
-
-router.put('/tickets/assign/:id', controllers.assignUserToTicket)
+router.put('/tickets/assign/:id', ticketControllers.updateTicket)
 router.get('/tickets/:ticketId/assigneduser', controllers.getAssignedUserForTicket);
-router.put('/updateTicketCategory/:id', controllers.updateTicketCategory)
-router.put('/updateTicketStatus/:id', controllers.updateTicketStatus)
+
+
+router.post('/tickets', ticketControllers.createTicket);
+router.get('/gmpt-codes', ticketControllers.getGmptCodesBySite);
+router.put('/tickets/update/:id', ticketControllers.updateTicket);
+router.get('/tickets/:id', ticketControllers.getTicket);
+router.delete('/tickets/delete/:id', controllers.deleteTicket)
+
+//Comments
 
 router.get('/comments', controllers.getComments);
 router.post('/comments', controllers.createComment);
@@ -67,6 +43,7 @@ router.get('/comments/:id', controllers.getComment);
 router.put('/comments/:id', controllers.updateComment);
 router.delete('/comments/:id', controllers.deleteComment);
 
+// users
 router.get('/users', controllers.getUsers);
 router.get('/users/:id', controllers.getUser);
 router.get('/users/:userId/roles', controllers.getRolesForUser);
@@ -78,8 +55,6 @@ router.get('/roles', controllers.getRoles);
 router.get('/roles/:id', controllers.getRoleByID);
 router.post('/roles', controllers.createRole);
 router.delete('roles/:id', controllers.deleteRole);
-router.put('/tickets/:id', controllers.updateTicket);
-router.delete('/tickets/:id', controllers.deleteTicket);
 
 // -- JIRA
 
@@ -100,22 +75,6 @@ router.post('/iotdevices', controllers.fetchIoTDevices)
 // -- FLEETXQ
 
 router.post('/getvehicledetail', controllers.getVehicleDetail);
-
-
-// FLEET IQ 
-// gmtpid
-// router.get('/fleetiq',controllers.requireReadTicketPermission, controllers.fleetiq); 
-
-// // serialid
-// router.post('/fleetiqserial/:serialNo/:userName', controllers.requireReadTicketPermission, controllers.fleetiqserial);
-
-
-
-// //GET ALL DEALERS
-// router.get('/dealers', controllers.requireReadTicketPermission, controllers.getAllDealers);
-
-// //Get companys from dealer
-// router.get('/getCompanyFromDealer/:dealer_id', controllers.requireReadTicketPermission, controllers.getCompanyFromDealer);
 
 
 // FleetIQ
@@ -145,40 +104,40 @@ router.post('/tickets/paginated', controllers.getPaginatedTickets);
 
 router.post('/chatbot', controllers.handleChatbot);
 
-router.get('/cake', controllers.getAssignedTicketCount);
 
-router.get('/cake/status', controllers.getStatusCount);
 
-router.get('/cake/category', controllers.getCategoryCount);
 
 
 
 router.get('/', controllers.getWelcome);
-router.get('/customers', controllers.getCustomers);
-router.get('/sites', controllers.getSites);
-router.get('/vehicles', controllers.getVehicles);
-
-router.get('/ticket/site', controllers.getTicketsByLocation);
-
-router.get("/available-dates", controllers.getAvailableDates);
-
-router.get("/available-times", controllers.getAvailableTimes);
-
-router.get("/snapshots", controllers.getVehicleSnapshots);
-
-router.get('/tickets/export', (req, res, next) => {
-    console.log('Authorization Header:', req.headers.authorization);
-    console.log('Route hit: /tickets/export');
-    next();
-  }, controllers.exportAllTickets);
-  
-router.get('/gmpt-codes', (req, res, next) => {
-  console.log("Solicitud recibida en /gmpt-codes");
-  next();
-}, controllers.getGmptCodesBySite);
 
 
 
-router.get('/tickets/filterByStatus', controllers.getTicketsByStatus);
+
+router.get('/cake', controllers.getAssignedTicketCount);
+router.get('/cake/status', controllers.getStatusCount);
+router.get('/cake/category', controllers.getCategoryCount);
+//router.post('/tickets', controllers.createTicket)
+
+
+
+
+router.get('/customers', vehicleControllers.getCustomers);
+router.get('/sites', vehicleControllers.getSites);
+router.get('/vehicles', vehicleControllers.getVehicles);
+router.get("/available-dates", vehicleControllers.getAvailableDates);
+router.get("/available-times", vehicleControllers.getAvailableTimes);
+router.get("/snapshots", vehicleControllers.getVehicleSnapshots);
+router.post('/master-codes', vehicleControllers.getMasterCodes);
+router.post('/blacklisted-drivers', vehicleControllers.getBlacklistedDrivers);
+router.post('/clear-vehicle-cache', vehicleControllers.clearVehicleCache);
+router.post('/vehicle-logins', vehicleControllers.getVehicleLogins);
+router.post('/last-driver-logins', vehicleControllers.getLastDriverLogins);
+router.post('/messages-sent', vehicleControllers.getMessagesSent);
+router.post('/vehicle-status', vehicleControllers.getVehicleStatus);
+// Login
+
+
+
 
 module.exports = router;
