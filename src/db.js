@@ -1,11 +1,11 @@
 const { Client } = require('pg');
 
 global.pgClient = global.pgClient || new Client({
-  host: 'db-fleetiq-encrypt.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
+  host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
   port: 5432,
   database: 'multi',
-  user: 'gmtp',
-  password: 'MUVQcHz2DqZGHvZh'
+  user: 'readonly_user',
+  password: 'StrongPassword123!'
 });
 
 if (!global.pgClient._connected) {

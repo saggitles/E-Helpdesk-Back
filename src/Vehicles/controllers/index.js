@@ -1,6 +1,6 @@
 const auth0 = require('auth0');
 const jwt = require('jsonwebtoken');
-const prisma = require('../../prisma');
+//const prisma = require('../../prisma');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
@@ -25,8 +25,8 @@ exports.getCustomers = async (req, res) => {
       host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
       port: 5432,
       database: 'multi',
-      user: 'gmtp',
-      password: 'MUVQcHz2DqZGHvZh'
+      user: 'readonly_user',
+      password: 'StrongPassword123!'
     });
   
     try {
@@ -74,8 +74,8 @@ exports.getCustomers = async (req, res) => {
         host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
         port: 5432,
         database: 'multi',
-        user: 'gmtp',
-        password: 'MUVQcHz2DqZGHvZh'
+        user: 'readonly_user',
+        password: 'StrongPassword123!'
       });
   
       await client.connect();
@@ -113,8 +113,8 @@ exports.getCustomers = async (req, res) => {
       host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
       port: 5432,
       database: "multi",
-      user: "gmtp",
-      password: "MUVQcHz2DqZGHvZh",
+      user: 'readonly_user',
+      password: "StrongPassword123!",
     });
   
     try {
@@ -182,8 +182,8 @@ exports.getCustomers = async (req, res) => {
       host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
       port: 5432,
       database: "multi",
-      user: "gmtp",
-      password: "MUVQcHz2DqZGHvZh",
+      user: 'readonly_user',
+      password: "StrongPassword123!",
     });
   
     try {
@@ -264,8 +264,8 @@ WHERE fvm."VEHICLE_CD" = $1;
       host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
       port: 5432,
       database: "multi",
-      user: "gmtp",
-      password: "MUVQcHz2DqZGHvZh",
+      user: 'readonly_user',
+      password: "StrongPassword123!",
     });
   
     try {
@@ -326,8 +326,8 @@ WHERE fvm."VEHICLE_CD" = $1;
       host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
       port: 5432,
       database: "multi",
-      user: "gmtp",
-      password: "MUVQcHz2DqZGHvZh",
+      user: 'readonly_user',
+      password: "StrongPassword123!",
     });
   
     try {
@@ -394,8 +394,8 @@ WHERE fvm."VEHICLE_CD" = $1;
       host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
       port: 5432,
       database: "multi",
-      user: "gmtp",
-      password: "MUVQcHz2DqZGHvZh",
+      user: 'readonly_user',
+      password: "StrongPassword123!",
     });
   
     try {
@@ -427,8 +427,8 @@ WHERE fvm."VEHICLE_CD" = $1;
       host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
       port: 5432,
       database: "multi",
-      user: "gmtp",
-      password: "MUVQcHz2DqZGHvZh",
+      user: 'readonly_user',
+      password: "StrongPassword123!",
     });
   
     try {
@@ -549,8 +549,8 @@ exports.getLastDriverLogins = async (req, res) => {
     host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
     port: 5432,
     database: "multi",
-    user: "gmtp",
-    password: "MUVQcHz2DqZGHvZh",
+    user: 'readonly_user',
+    password: "StrongPassword123!",
   });
 
   try {

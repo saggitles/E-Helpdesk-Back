@@ -1,4 +1,3 @@
-const auth0 = require('auth0');
 const jwt = require('jsonwebtoken');
 const prisma = require('./prisma');
 const axios = require('axios');
@@ -1241,11 +1240,11 @@ const { PassThrough } = require('stream');
 exports.fleetiq = async (req, res) => {
   const vehicleIdParam = req.query.vehicleId; 
   const client = new Client({
-    host: 'db-fleetiq-encrypt.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
+    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
     port: 5432,
     database: 'multi',
-    user: 'gmtp',
-    password: 'MUVQcHz2DqZGHvZh'
+    user: 'readonly_user',
+    password: 'StrongPassword123!'
   });
 
   try {
@@ -1514,11 +1513,11 @@ exports.fleetiqserial = async (req, res) => {
   console.log(serialNo + "---" + userName);
 
   const client = new Client({
-    host: 'db-fleetiq-encrypt.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
+    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
     port: 5432,
     database: 'multi',
-    user: 'gmtp',
-    password: 'MUVQcHz2DqZGHvZh'
+    user: 'readonly_user'
+    password: 'StrongPassword123!'
   });
 
   try {
@@ -1815,11 +1814,11 @@ exports.fleetiqname = async (req, res) => {
   console.log(serialNo + "---" + userName);
 
   const client = new Client({
-    host: 'db-fleetiq-encrypt.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
+    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
     port: 5432,
     database: 'multi',
-    user: 'gmtp',
-    password: 'MUVQcHz2DqZGHvZh'
+    user: 'readonly_user'
+    password: 'StrongPassword123!'
   });
 
   try {
@@ -2112,7 +2111,7 @@ exports.fleetfocus = async (req, res) => {
     host: 'http://54.147.187.245:81/phppgadmin/',
     port: 81,
     database: 'fleetiq360',
-    user: 'gmtp',
+    user: 'readonly_user'
     password: 'd5CnRfNA5LDzHmta'
   });
 
@@ -2128,11 +2127,11 @@ exports.fleetfocus = async (req, res) => {
 // All dealers
 exports.getAllDealers = async (req, res) => {
   const client = new Client({
-    host: 'db-fleetiq-encrypt.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
+    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
     port: 5432,
     database: 'multi',
-    user: 'gmtp',
-    password: 'MUVQcHz2DqZGHvZh'
+    user: 'readonly_user'
+    password: 'StrongPassword123!'
   });
 
   try {
@@ -2156,11 +2155,11 @@ exports.getCompanyFromDealer = async (req, res) => {
   const dealerId = req.params.dealer_id;
 
   const client = new Client({
-    host: 'db-fleetiq-encrypt.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
+    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
     port: 5432,
     database: 'multi',
-    user: 'gmtp',
-    password: 'MUVQcHz2DqZGHvZh'
+    user: 'readonly_user'
+    password: 'StrongPassword123!'
   });
 
   try {
