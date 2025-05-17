@@ -1516,7 +1516,7 @@ exports.fleetiqserial = async (req, res) => {
     host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
     port: 5432,
     database: 'multi',
-    user: 'readonly_user'
+    user: 'readonly_user',
     password: 'StrongPassword123!'
   });
 
@@ -1817,7 +1817,7 @@ exports.fleetiqname = async (req, res) => {
     host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
     port: 5432,
     database: 'multi',
-    user: 'readonly_user'
+    user: 'readonly_user',
     password: 'StrongPassword123!'
   });
 
@@ -2111,7 +2111,7 @@ exports.fleetfocus = async (req, res) => {
     host: 'http://54.147.187.245:81/phppgadmin/',
     port: 81,
     database: 'fleetiq360',
-    user: 'readonly_user'
+    user: 'readonly_user',
     password: 'd5CnRfNA5LDzHmta'
   });
 
@@ -2130,7 +2130,7 @@ exports.getAllDealers = async (req, res) => {
     host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
     port: 5432,
     database: 'multi',
-    user: 'readonly_user'
+    user: 'readonly_user',
     password: 'StrongPassword123!'
   });
 
@@ -2158,7 +2158,7 @@ exports.getCompanyFromDealer = async (req, res) => {
     host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
     port: 5432,
     database: 'multi',
-    user: 'readonly_user'
+    user: 'readonly_user',
     password: 'StrongPassword123!'
   });
 
