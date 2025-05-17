@@ -3,7 +3,6 @@ const router = express.Router();
 const controllers = require('./controllers');
 const ticketControllers = require('./Tickets/controllers/')
 const vehicleControllers = require('./Vehicles/controllers/')
-const { auth } = require('express-oauth2-jwt-bearer');
 // Add this at top of routes.js
 console.log('Available vehicle controller methods:', Object.keys(vehicleControllers));
 
