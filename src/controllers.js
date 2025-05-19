@@ -2533,7 +2533,48 @@ exports.requireReadTicketPermission = requirePermission('read:ticket');
 exports.requireCreateTicket = requirePermission('create:ticket');
 
 
+// Database connection test endpoint
+exports.testDatabaseConnection = async (req, res) => {
+  console.log('Testing database connection...');
+  
+  // Test if we can connect to the FleetIQ database
+  const fleetiqClient = new Client({
+    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
+    port: 5432,
+    database: 'multi',
+    user: 'readonly_user',
+    password: 'StrongPassword123!'
+  });
 
-/**********************************************/
+  try {
+    await fleetiqClient.connect();
+    const result = await fleetiqClient.query('SELECT NOW() as current_time');
+    await fleetiqClient.end();
+    
+    // Test if we can connect to the Prisma database
+    const prismaResult = await prisma.$queryRaw`SELECT NOW() as current_time`;
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Database connection successful',
+      fleetiq: {
+        connected: true,
+        timestamp: result.rows[0].current_time
+      },
+      prisma: {
+        connected: true,
+        timestamp: prismaResult[0].current_time
+      }
+    });
+  } catch (error) {
+    console.error('Database connection error:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Database connection failed',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'production' ? null : error.stack
+    });
+  }
+};
 
 
