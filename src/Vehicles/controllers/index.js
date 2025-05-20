@@ -1016,7 +1016,7 @@ const dbConfig = {
     user: 'postgres',
     password: 'admin',
     database: 'E-helpdesk',
-    port: 18977,
+    port: 13730,
   };
   
   exports.getAvailableDates = async (req, res) => {
