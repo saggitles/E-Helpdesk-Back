@@ -27,6 +27,7 @@
     "seed": "prisma/seed.js"
   },
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "nodemon src/index.js",
     "start": "node index.js",
     "build": "prisma generate",
