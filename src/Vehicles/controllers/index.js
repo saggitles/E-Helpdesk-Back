@@ -1012,11 +1012,11 @@ ORDER BY fvm."VEHICLE_CD";
   
 
 const dbConfig = {
-    host: '192.168.0.30',
+    host: '4.tcp.ngrok.io',
     user: 'postgres',
     password: 'admin',
     database: 'E-helpdesk',
-    port: 5432,
+    port: 18977,
   };
   
   exports.getAvailableDates = async (req, res) => {
