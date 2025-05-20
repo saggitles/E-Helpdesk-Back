@@ -104,7 +104,6 @@ router.post('/tickets/paginated', controllers.getPaginatedTickets);
 router.post('/chatbot', controllers.handleChatbot);
 
 // Database connection test route
-router.get('/api/test-db', controllers.testDatabaseConnection);
 
 router.get('/', controllers.getWelcome);
 
