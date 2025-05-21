@@ -2628,5 +2628,51 @@ exports.checkDatabaseHealth = async (req, res) => {
   });
 };
 
+// Proxy for external APIs
+exports.proxyRequest = async (req, res) => {
+  const targetUrl = req.query.url || req.body.url;
+  const method = req.query.method || req.body.method || 'GET';
+  const data = req.body.data || {};
+  
+  // Fix double slashes in URLs
+  const normalizedUrl = targetUrl.replace(/([^:]\/)\/+/g, "$1");
+  
+  console.log(`Proxying ${method} request to: ${normalizedUrl}`);
+  
+  try {
+    let response;
+    
+    if (method.toUpperCase() === 'GET') {
+      response = await axios.get(normalizedUrl, {
+        headers: {
+          'Content-Type': 'application/json',
+          // Forward any authorization headers from the original request
+          ...(req.headers.authorization && { 'Authorization': req.headers.authorization })
+        }
+      });
+    } else if (method.toUpperCase() === 'POST') {
+      response = await axios.post(normalizedUrl, data, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(req.headers.authorization && { 'Authorization': req.headers.authorization })
+        }
+      });
+    } else {
+      return res.status(400).json({ error: 'Unsupported method' });
+    }
+    
+    // Forward the response from the external API
+    return res.status(response.status).json(response.data);
+  } catch (error) {
+    console.error('Proxy request failed:', error.message);
+    // Forward error status and message if available
+    return res.status(error.response?.status || 500).json({
+      error: 'Proxy request failed',
+      details: error.message,
+      response: error.response?.data
+    });
+  }
+};
+
 
 
