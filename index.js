@@ -11,16 +11,32 @@ app.use(fileUpload({
   createParentPath: true,
 }));
 
-// Enhanced CORS configuration to handle preflight requests properly
+// Updated CORS configuration to handle frontend requests properly
 app.use(cors({
-  origin: ['https://e-helpdesk-front.vercel.app', 'http://localhost:3000'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  origin: [
+    'https://e-helpdesk-front.vercel.app',
+    'https://www.e-helpdesk-front.vercel.app',
+    'http://localhost:3000'
+  ],
+  methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Access-Control-Allow-Headers',
+    'Origin',
+    'Accept',
+    'X-Requested-With',
+    'Content-Type',
+    'Access-Control-Request-Method',
+    'Access-Control-Request-Headers',
+    'Authorization'
+  ],
+  exposedHeaders: ['Content-Disposition'],
   credentials: true,
-  optionsSuccessStatus: 200 // Some legacy browsers (IE11) choke on 204
+  optionsSuccessStatus: 200,
+  preflightContinue: false,
+  maxAge: 86400 // 24 hours
 }));
 
-// Handle OPTIONS requests explicitly
+// Handle preflight OPTIONS requests for all routes
 app.options('*', cors());
 
 app.use(express.json());
@@ -34,14 +50,17 @@ app.use((req, res, next) => {
   next();
 });
 
+// Add CORS headers to all responses as a fallback
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  next();
+});
+
 app.use('/api', routes);
-
-
-// routes para tickets
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`Api is running on port ${PORT}`);
 });
-
-// Holis
