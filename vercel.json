@@ -9,6 +9,10 @@
   }],
   "routes": [
     {
+      "src": "/api/auth/(.*)",
+      "dest": "https://e-helpdesk-front.vercel.app/api/auth/$1"
+    },
+    {
       "src": "/(.*)",
       "dest": "index.js"
     }
