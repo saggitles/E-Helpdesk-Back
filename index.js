@@ -11,26 +11,28 @@ app.use(fileUpload({
   createParentPath: true,
 }));
 
+// Enhanced CORS configuration to handle preflight requests properly
 app.use(cors({
-  origin: '*',
-  optionsSuccessStatus: 204
+  origin: ['https://e-helpdesk-front.vercel.app', 'http://localhost:3000'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  credentials: true,
+  optionsSuccessStatus: 200 // Some legacy browsers (IE11) choke on 204
 }));
 
+// Handle OPTIONS requests explicitly
 app.options('*', cors());
 
-
-// app.use(cors({
-//   origin: [
-//     'http://localhost:3000/support/create/ticket',
-//     'http://localhost:3000/support/tickets/pending',
-//     /http:\/\/localhost:3000\/support\/update\/\d+/,
-//     /http:\/\/localhost:3000\/support\/tickets\/\d+/,
-//     'http://localhost:3000'
-//   ]
-// }));
-
-
 app.use(express.json());
+
+// Fix double slash issue - normalize URL paths
+app.use((req, res, next) => {
+  // Normalize multiple slashes in the URL path
+  if (req.url.includes('//')) {
+    req.url = req.url.replace(/\/+/g, '/');
+  }
+  next();
+});
 
 app.use('/api', routes);
 
