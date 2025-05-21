@@ -11,35 +11,8 @@ app.use(fileUpload({
   createParentPath: true,
 }));
 
-// Updated CORS configuration to handle frontend requests properly
-app.use(cors({
-  origin: [
-    'https://e-helpdesk-front.vercel.app',
-    'https://www.e-helpdesk-front.vercel.app',
-    'http://localhost:3000'
-  ],
-  methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-  allowedHeaders: [
-    'Access-Control-Allow-Headers',
-    'Origin',
-    'Accept',
-    'X-Requested-With',
-    'Content-Type',
-    'Access-Control-Request-Method',
-    'Access-Control-Request-Headers',
-    'Authorization'
-  ],
-  exposedHeaders: ['Content-Disposition'],
-  credentials: true,
-  optionsSuccessStatus: 200,
-  preflightContinue: false,
-  maxAge: 86400 // 24 hours
-}));
-
-// Handle preflight OPTIONS requests for all routes
-app.options('*', cors());
-
-app.use(express.json());
+// Simple CORS enabling - most permissive approach
+app.use(cors());
 
 // Fix double slash issue - normalize URL paths
 app.use((req, res, next) => {
@@ -50,14 +23,22 @@ app.use((req, res, next) => {
   next();
 });
 
-// Add CORS headers to all responses as a fallback
+// Add explicit CORS headers to all responses to ensure they're always present
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Access-Control-Allow-Headers');
+  res.header('Access-Control-Max-Age', '86400'); // 24 hours
+  
+  // Handle preflight OPTIONS requests immediately
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  
   next();
 });
 
+app.use(express.json());
 app.use('/api', routes);
 
 const PORT = process.env.PORT || 8080;

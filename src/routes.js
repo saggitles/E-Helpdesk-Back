@@ -107,8 +107,8 @@ router.post('/chatbot', controllers.handleChatbot);
 
 router.get('/', controllers.getWelcome);
 
-
-
+// Health Check Endpoint
+router.get('/health', controllers.checkDatabaseHealth);
 
 router.get('/cake', controllers.getAssignedTicketCount);
 router.get('/cake/status', controllers.getStatusCount);

@@ -2533,7 +2533,100 @@ exports.requireReadTicketPermission = requirePermission('read:ticket');
 exports.requireCreateTicket = requirePermission('create:ticket');
 
 
-// Database connection test endpoint
+// Database Health Check Endpoint
+exports.checkDatabaseHealth = async (req, res) => {
+  console.log('Checking database health...');
+  const healthStatus = {
+    prisma: { status: 'unknown' },
+    fleetiq: { status: 'unknown' },
+    snapshot: { status: 'unknown' }
+  };
+
+  // Check Prisma database health (Azure PostgreSQL)
+  try {
+    const prismaResult = await prisma.$queryRaw`SELECT NOW() as current_time`;
+    healthStatus.prisma = {
+      status: 'connected',
+      timestamp: prismaResult[0].current_time,
+      database: 'Azure PostgreSQL'
+    };
+  } catch (prismaError) {
+    console.error('Prisma database connection error:', prismaError.message);
+    healthStatus.prisma = {
+      status: 'error',
+      error: prismaError.message,
+      database: 'Azure PostgreSQL'
+    };
+  }
+
+  // Check FleetIQ database health
+  const fleetiqClient = new Client({
+    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
+    port: 5432,
+    database: 'multi',
+    user: 'readonly_user',
+    password: 'StrongPassword123!'
+  });
+
+  try {
+    await fleetiqClient.connect();
+    const fleetiqResult = await fleetiqClient.query('SELECT NOW() as current_time');
+    await fleetiqClient.end();
+    
+    healthStatus.fleetiq = {
+      status: 'connected',
+      timestamp: fleetiqResult.rows[0].current_time,
+      database: 'FleetIQ AWS RDS'
+    };
+  } catch (fleetiqError) {
+    console.error('FleetIQ database connection error:', fleetiqError.message);
+    healthStatus.fleetiq = {
+      status: 'error',
+      error: fleetiqError.message,
+      database: 'FleetIQ AWS RDS'
+    };
+  }
+
+  // Check Snapshot database health (ngrok PostgreSQL)
+  const snapshotClient = new Client({
+    host: '4.tcp.ngrok.io',
+    port: 13730,
+    database: 'E-helpdesk',
+    user: 'postgres',
+    password: 'admin'
+  });
+
+  try {
+    await snapshotClient.connect();
+    const snapshotResult = await snapshotClient.query('SELECT NOW() as current_time');
+    await snapshotClient.end();
+    
+    healthStatus.snapshot = {
+      status: 'connected',
+      timestamp: snapshotResult.rows[0].current_time,
+      database: 'Snapshot PostgreSQL (ngrok)'
+    };
+  } catch (snapshotError) {
+    console.error('Snapshot database connection error:', snapshotError.message);
+    healthStatus.snapshot = {
+      status: 'error',
+      error: snapshotError.message,
+      database: 'Snapshot PostgreSQL (ngrok)'
+    };
+  }
+
+  // Determine overall health status - now including snapshot DB
+  const overallStatus = 
+    healthStatus.prisma.status === 'connected' && 
+    healthStatus.fleetiq.status === 'connected' &&
+    healthStatus.snapshot.status === 'connected' ? 200 : 503;
+
+  return res.status(overallStatus).json({
+    status: overallStatus === 200 ? 'healthy' : 'unhealthy',
+    timestamp: new Date().toISOString(),
+    databases: healthStatus
+  });
+};
 
 
 
