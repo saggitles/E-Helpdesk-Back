@@ -6,8 +6,6 @@ const vehicleControllers = require('./Vehicles/controllers/')
 // Add this at top of routes.js
 console.log('Available vehicle controller methods:', Object.keys(vehicleControllers));
 
-// External API proxy route
-router.all('/proxy', controllers.proxyRequest);
 
 // Tickets
 
