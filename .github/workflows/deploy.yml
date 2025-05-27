@@ -3,13 +3,15 @@ name: Azure Web App Deploy
 on:
   push:
     branches:
-      - main # or 'master' or whichever branch you use
+      - main
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -19,29 +21,17 @@ jobs:
         with:
           node-version: "18"
 
-      - name: Create .env file
-        run: |
-          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env
-          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env.production
-          echo "Environment variables set up for Prisma"
-
       - name: Install dependencies
         run: npm install
 
-      - name: Generate Prisma Client
+      - name: Generate Prisma client
         run: npx prisma generate
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Run database migrations
+        run: npx prisma migrate deploy
 
       - name: Build the app
         run: npm run build
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-
-      - name: Run Prisma migrations
-        run: npx prisma migrate deploy
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v2
