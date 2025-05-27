@@ -26,16 +26,89 @@ jobs:
         with:
           node-version: '18.x'
 
-      - name: Debug GitHub environment
+      - name: Debug repository structure
         run: |
-          echo "GitHub environment variables (redacted):"
-          echo "DATABASE_URL is set: ${{ secrets.DATABASE_URL != '' }}"
           echo "Current directory: $PWD"
+          echo "Repository contents:"
+          ls -la
+          echo "Prisma directory contents:"
+          if [ -d "./prisma" ]; then
+            ls -la ./prisma
+          elif [ -d "prisma" ]; then
+            ls -la prisma
+          else
+            echo "Prisma directory not found in expected locations"
+            find . -name "prisma" | sort
+          fi
+          
+          # Create setup script directly if it doesn't exist
+          mkdir -p prisma
+          
+          cat > prisma/setup-github-env.js << 'EOF'
+          // This script helps set up the environment for Prisma in GitHub Actions
+          const fs = require('fs');
+          const path = require('path');
 
-      - name: Setup environment for Prisma
+          // Ensure required environment variables are available
+          const requiredEnvVars = ['DATABASE_URL'];
+
+          // Function to check environment variables
+          function checkEnvVars() {
+            const missing = requiredEnvVars.filter(envVar => !process.env[envVar]);
+            if (missing.length > 0) {
+              console.error(`Missing required environment variables: ${missing.join(', ')}`);
+              console.error('Make sure these are set in GitHub Secrets and passed to the workflow');
+              process.exit(1);
+            } else {
+              console.log('All required environment variables are present.');
+            }
+          }
+
+          // Function to create .env file if it doesn't exist
+          function createEnvFile() {
+            const envPath = path.resolve(__dirname, '../.env');
+            const envProductionPath = path.resolve(__dirname, '../.env.production');
+            
+            try {
+              // Create .env file
+              let envContent = '';
+              requiredEnvVars.forEach(envVar => {
+                envContent += `${envVar}="${process.env[envVar]}"\n`;
+              });
+              
+              // Write both .env and .env.production files
+              fs.writeFileSync(envPath, envContent);
+              fs.writeFileSync(envProductionPath, envContent);
+              
+              console.log('.env and .env.production files created successfully');
+            } catch (error) {
+              console.error('Error creating .env files:', error);
+              process.exit(1);
+            }
+          }
+
+          // Check environment variables
+          checkEnvVars();
+
+          // Create .env files
+          createEnvFile();
+
+          console.log('Environment setup completed successfully');
+          EOF
+          
+          echo "Setup script created"
+          ls -la prisma/
+
+      - name: Create environment files
         run: |
-          npm install -g cross-env
-          node ./prisma/setup-github-env.js
+          # Directly create .env file with DATABASE_URL
+          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env
+          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env.production
+          
+          echo "Environment files created"
+          
+          # Run the setup script we created
+          node prisma/setup-github-env.js
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
@@ -43,7 +116,7 @@ jobs:
         run: |
           npm install
           # Run Prisma generate explicitly with environment variable
-          npx prisma generate
+          npx dotenv -e .env prisma generate
           npm run build --if-present
           npm run test --if-present
         env:
