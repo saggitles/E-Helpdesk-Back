@@ -153,6 +153,20 @@ jobs:
       - name: Unzip artifact for deployment
         run: unzip release.zip
       
+      - name: Install Azure CLI
+        run: |
+          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+      
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Stop Web App before deployment
+        run: |
+          az webapp stop --name ci-ehelpdesk-be-staging --resource-group $(az webapp show --name ci-ehelpdesk-be-staging --query resourceGroup --output tsv) || echo "App may already be stopped"
+          sleep 10
+      
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
@@ -161,3 +175,10 @@ jobs:
           slot-name: 'Production'
           package: .
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_3D53255A9C744DB7A6458E5D647265A7 }}
+          clean: true
+          restart: true
+      
+      - name: Start Web App after deployment
+        run: |
+          az webapp start --name ci-ehelpdesk-be-staging --resource-group $(az webapp show --name ci-ehelpdesk-be-staging --query resourceGroup --output tsv)
+          echo "Azure Web App started"
