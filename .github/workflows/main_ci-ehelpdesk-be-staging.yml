@@ -14,18 +14,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read #This is required for actions/checkout
-    
+
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       PRISMA_SKIP_SEED: "true" # Skip automatic seeding during Prisma operations
-    
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Node.js version
         uses: actions/setup-node@v3
         with:
-          node-version: '18.x'
+          node-version: "18.x"
 
       - name: Debug repository structure
         run: |
@@ -41,10 +41,10 @@ jobs:
             echo "Prisma directory not found in expected locations"
             find . -name "prisma" | sort
           fi
-          
+
           # Create setup script directly if it doesn't exist
           mkdir -p prisma
-          
+
           cat > prisma/setup-github-env.js << 'EOF'
           // This script helps set up the environment for Prisma in GitHub Actions
           const fs = require('fs');
@@ -99,7 +99,7 @@ jobs:
 
           console.log('Environment setup completed successfully');
           EOF
-          
+
           echo "Setup script created"
           ls -la prisma/
 
@@ -110,9 +110,9 @@ jobs:
           echo "PRISMA_SKIP_SEED=true" >> .env
           echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env.production
           echo "PRISMA_SKIP_SEED=true" >> .env.production
-          
+
           echo "Environment files created"
-          
+
           # Run the setup script we created
           node prisma/setup-github-env.js
         env:
@@ -141,9 +141,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     environment:
-      name: 'Production'
+      name: "Production"
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
-    
+
     steps:
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
@@ -152,13 +152,13 @@ jobs:
 
       - name: Unzip artifact for deployment
         run: unzip release.zip
-      
-      - name: 'Deploy to Azure Web App'
+
+      - name: "Deploy to Azure Web App"
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'ci-ehelpdesk-be-staging'
-          slot-name: 'Production'
+          app-name: "ci-ehelpdesk-be-staging"
+          slot-name: "Production"
           package: .
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_3D53255A9C744DB7A6458E5D647265A7 }}
           clean: true

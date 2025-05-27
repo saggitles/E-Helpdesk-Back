@@ -1,9 +1,9 @@
-name: Azure Web App Deploy
+name: Azure Web App Deploy (DISABLED)
 
 on:
-  push:
-    branches:
-      - main
+  # Removing trigger to prevent this workflow from running
+  workflow_dispatch:
+    # Only manually triggered now
 
 jobs:
   build-and-deploy:
