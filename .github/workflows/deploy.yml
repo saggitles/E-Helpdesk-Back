@@ -29,5 +29,5 @@ jobs:
         uses: azure/webapps-deploy@v2
         with:
           app-name: ci-ehelpdesk-be-staging
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_3D53255A9C744DB7A6458E5D647265A7  }}
           package: .
