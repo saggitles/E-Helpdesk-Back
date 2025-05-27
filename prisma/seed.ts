@@ -6,10 +6,10 @@ async function main() {
   // Seed roles
   const rolesToSeed = ['Admin', 'User', 'Guest'];
 
-  for (const RoleName of rolesToSeed) {
+  for (const roleName of rolesToSeed) {
     await prisma.userRole.create({
       data: {
-        RoleName,
+        role_name: roleName,
       },
     });
   }
@@ -19,7 +19,8 @@ async function main() {
 
 main()
   .catch((error) => {
-    throw error;
+    console.error('Error in seeding script:', error);
+    process.exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();

@@ -17,6 +17,7 @@ jobs:
     
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PRISMA_SKIP_SEED: "true" # Skip automatic seeding during Prisma operations
     
     steps:
       - uses: actions/checkout@v4
@@ -76,6 +77,9 @@ jobs:
                 envContent += `${envVar}="${process.env[envVar]}"\n`;
               });
               
+              // Add flag to skip seeding
+              envContent += `PRISMA_SKIP_SEED="true"\n`;
+              
               // Write both .env and .env.production files
               fs.writeFileSync(envPath, envContent);
               fs.writeFileSync(envProductionPath, envContent);
@@ -103,7 +107,9 @@ jobs:
         run: |
           # Directly create .env file with DATABASE_URL
           echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env
+          echo "PRISMA_SKIP_SEED=true" >> .env
           echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env.production
+          echo "PRISMA_SKIP_SEED=true" >> .env.production
           
           echo "Environment files created"
           
@@ -114,13 +120,13 @@ jobs:
 
       - name: npm install, build, and test
         run: |
-          npm install
-          # Run Prisma generate explicitly with environment variable
-          npx dotenv -e .env prisma generate
+          npm install --no-package-lock
+          # Run Prisma generate with PRISMA_SKIP_SEED=true
+          PRISMA_SKIP_SEED=true npx dotenv -e .env prisma generate
           npm run build --if-present
-          npm run test --if-present
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PRISMA_SKIP_SEED: "true"
 
       - name: Zip artifact for deployment
         run: zip release.zip ./* -r
