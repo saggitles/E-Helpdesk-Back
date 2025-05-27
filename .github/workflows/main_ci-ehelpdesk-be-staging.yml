@@ -14,7 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read #This is required for actions/checkout
-
+    
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    
     steps:
       - uses: actions/checkout@v4
 
@@ -23,11 +26,28 @@ jobs:
         with:
           node-version: '18.x'
 
+      - name: Debug GitHub environment
+        run: |
+          echo "GitHub environment variables (redacted):"
+          echo "DATABASE_URL is set: ${{ secrets.DATABASE_URL != '' }}"
+          echo "Current directory: $PWD"
+
+      - name: Setup environment for Prisma
+        run: |
+          npm install -g cross-env
+          node ./prisma/setup-github-env.js
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
       - name: npm install, build, and test
         run: |
           npm install
+          # Run Prisma generate explicitly with environment variable
+          npx prisma generate
           npm run build --if-present
           npm run test --if-present
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Zip artifact for deployment
         run: zip release.zip ./* -r
