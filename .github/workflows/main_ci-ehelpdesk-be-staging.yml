@@ -128,8 +128,31 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           PRISMA_SKIP_SEED: "true"
 
-      - name: Zip artifact for deployment
-        run: zip release.zip ./* -r
+      - name: Prepare deployment package
+        run: |
+          # Create a deployment directory
+          mkdir -p deploy
+          
+          # Copy necessary files to deployment directory
+          cp -r index.js package.json package-lock.json vercel.json prisma src services deploy/
+          
+          # Copy node modules excluding any problematic files
+          mkdir -p deploy/node_modules
+          cp -r node_modules/* deploy/node_modules/ 2>/dev/null || :
+          
+          # Remove any potentially problematic files from node_modules
+          find deploy/node_modules -type f -name "*.cmd" -delete || :
+          find deploy/node_modules -type f -name "*.pdb" -delete || :
+          
+          # Create .deployment file to help Azure understand the deployment
+          echo "[config]" > deploy/.deployment
+          echo "SCM_DO_BUILD_DURING_DEPLOYMENT=false" >> deploy/.deployment
+
+          # Create a clean zip from the deploy directory
+          cd deploy && zip -r ../release.zip ./* && cd ..
+          
+          echo "Clean deployment package created"
+          ls -la
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -161,5 +184,5 @@ jobs:
           slot-name: "Production"
           package: .
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_3D53255A9C744DB7A6458E5D647265A7 }}
-          clean: true
+          clean: false  # Changed from true to false to avoid deletion conflicts
           restart: true
