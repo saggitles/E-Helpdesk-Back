@@ -1,170 +1,68 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
-
-name: Build and deploy Node.js app to Azure Web App - ci-ehelpdesk-be-staging
+# This workflow will build and push a node.js application to an Azure Web App when a commit is pushed to your default branch.
+#
+# This workflow assumes you have already created the target Azure App Service web app.
+# For instructions see https://docs.microsoft.com/en-us/azure/app-service/quickstart-nodejs?tabs=linux&pivots=development-environment-cli
+#
+# To configure this workflow:
+#
+# 1. Download the Publish Profile for your Azure Web App. You can download this file from the Overview page of your Web App in the Azure Portal.
+#    For more information: https://docs.microsoft.com/en-us/azure/app-service/deploy-github-actions?tabs=applevel#generate-deployment-credentials
+#
+# 2. Create a secret in your repository named AZURE_WEBAPP_PUBLISH_PROFILE, paste the publish profile contents as the value of the secret.
+#    For instructions on obtaining the publish profile see: https://docs.microsoft.com/azure/app-service/deploy-github-actions#configure-the-github-secret
+#
+# 3. Change the value for the AZURE_WEBAPP_NAME. Optionally, change the AZURE_WEBAPP_PACKAGE_PATH and NODE_VERSION environment variables below.
+#
+# For more information on GitHub Actions for Azure: https://github.com/Azure/Actions
+# For more information on the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
+# For more samples to get started with GitHub Action workflows to deploy to Azure: https://github.com/Azure/actions-workflow-samples
 
 on:
   push:
-    branches:
-      - main
+    branches: ["main"]
   workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: ci-ehelpdesk-be-staging # set this to your application's name
+  AZURE_WEBAPP_PACKAGE_PATH: "." # set this to the path to your web app project, defaults to the repository root
+  NODE_VERSION: "20.x" # set this to the node version to use
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+  PRISMA_SKIP_SEED: "true" # Skip automatic seeding during Prisma operations
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read #This is required for actions/checkout
-
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      PRISMA_SKIP_SEED: "true" # Skip automatic seeding during Prisma operations
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node.js version
-        uses: actions/setup-node@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: "20.x"
-
-      - name: Debug repository structure
-        run: |
-          echo "Current directory: $PWD"
-          echo "Repository contents:"
-          ls -la
-          echo "Prisma directory contents:"
-          if [ -d "./prisma" ]; then
-            ls -la ./prisma
-          elif [ -d "prisma" ]; then
-            ls -la prisma
-          else
-            echo "Prisma directory not found in expected locations"
-            find . -name "prisma" | sort
-          fi
-
-          # Create setup script directly if it doesn't exist
-          mkdir -p prisma
-
-          cat > prisma/setup-github-env.js << 'EOF'
-          // This script helps set up the environment for Prisma in GitHub Actions
-          const fs = require('fs');
-          const path = require('path');
-
-          // Ensure required environment variables are available
-          const requiredEnvVars = ['DATABASE_URL'];
-
-          // Function to check environment variables
-          function checkEnvVars() {
-            const missing = requiredEnvVars.filter(envVar => !process.env[envVar]);
-            if (missing.length > 0) {
-              console.error(`Missing required environment variables: ${missing.join(', ')}`);
-              console.error('Make sure these are set in GitHub Secrets and passed to the workflow');
-              process.exit(1);
-            } else {
-              console.log('All required environment variables are present.');
-            }
-          }
-
-          // Function to create .env file if it doesn't exist
-          function createEnvFile() {
-            const envPath = path.resolve(__dirname, '../.env');
-            const envProductionPath = path.resolve(__dirname, '../.env.production');
-            
-            try {
-              // Create .env file
-              let envContent = '';
-              requiredEnvVars.forEach(envVar => {
-                envContent += `${envVar}="${process.env[envVar]}"\n`;
-              });
-              
-              // Add flag to skip seeding
-              envContent += `PRISMA_SKIP_SEED="true"\n`;
-              
-              // Write both .env and .env.production files
-              fs.writeFileSync(envPath, envContent);
-              fs.writeFileSync(envProductionPath, envContent);
-              
-              console.log('.env and .env.production files created successfully');
-            } catch (error) {
-              console.error('Error creating .env files:', error);
-              process.exit(1);
-            }
-          }
-
-          // Check environment variables
-          checkEnvVars();
-
-          // Create .env files
-          createEnvFile();
-
-          console.log('Environment setup completed successfully');
-          EOF
-
-          echo "Setup script created"
-          ls -la prisma/
-
-      - name: Create environment files
-        run: |
-          # Directly create .env file with DATABASE_URL
-          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env
-          echo "PRISMA_SKIP_SEED=true" >> .env
-          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env.production
-          echo "PRISMA_SKIP_SEED=true" >> .env.production
-
-          echo "Environment files created"
-
-          # Run the setup script we created
-          node prisma/setup-github-env.js
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
 
       - name: npm install, build, and test
         run: |
-          npm install --no-package-lock
-          # Run Prisma generate with PRISMA_SKIP_SEED=true
-          PRISMA_SKIP_SEED=true npx dotenv -e .env prisma generate
+          npm install
           npm run build --if-present
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          PRISMA_SKIP_SEED: "true"
-
-      - name: Prepare deployment package
-        run: |
-          # Create a deployment directory
-          mkdir -p deploy
-
-          # Copy necessary files to deployment directory
-          cp -r index.js package.json package-lock.json vercel.json prisma src services deploy/
-
-          # Copy node modules excluding any problematic files
-          mkdir -p deploy/node_modules
-          cp -r node_modules/* deploy/node_modules/ 2>/dev/null || :
-
-          # Remove any potentially problematic files from node_modules
-          find deploy/node_modules -type f -name "*.cmd" -delete || :
-          find deploy/node_modules -type f -name "*.pdb" -delete || :
-
-          # Create .deployment file to help Azure understand the deployment
-          echo "[config]" > deploy/.deployment
-          echo "SCM_DO_BUILD_DURING_DEPLOYMENT=false" >> deploy/.deployment
-
-          # Create a clean zip from the deploy directory
-          cd deploy && zip -r ../release.zip ./* && cd ..
-
-          echo "Clean deployment package created"
-          ls -la
+          npm run test --if-present
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: release.zip
+          path: .
 
   deploy:
+    permissions:
+      contents: none
     runs-on: ubuntu-latest
     needs: build
     environment:
-      name: "Production"
+      name: "Development"
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
 
     steps:
@@ -173,16 +71,10 @@ jobs:
         with:
           name: node-app
 
-      - name: Unzip artifact for deployment
-        run: unzip release.zip
-
-      - name: "Deploy to Azure Web App"
+      - name: "Deploy to Azure WebApp"
         id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
+        uses: azure/webapps-deploy@v2
         with:
           app-name: "ci-ehelpdesk-be-staging"
-          slot-name: "Production"
-          package: .
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_3D53255A9C744DB7A6458E5D647265A7 }}
-          clean: false # Changed from true to false to avoid deletion conflicts
-          restart: true
+          package: .
