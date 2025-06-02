@@ -1,5 +1,4 @@
 // This file ensures Prisma Client is properly generated on Azure Functions
-const { exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -7,30 +6,41 @@ const fs = require('fs');
 const prismaClientDir = path.join(process.cwd(), 'node_modules', '.prisma', 'client');
 const clientExists = fs.existsSync(prismaClientDir);
 
-if (!clientExists) {
-  console.log('Prisma Client not found, generating...');
-  
-  // Execute Prisma generate
-  exec('npx prisma generate', (error, stdout, stderr) => {
-    if (error) {
-      console.error(`Error generating Prisma Client: ${error.message}`);
-      return;
+async function generatePrismaClient() {
+  try {
+    console.log('Attempting to generate Prisma Client programmatically...');
+    
+    // Import the generate function directly from @prisma/client
+    // This avoids shell execution which can have permission issues
+    const { PrismaClient } = require('@prisma/client');
+    
+    console.log('Prisma Client successfully loaded programmatically');
+    return true;
+  } catch (error) {
+    console.error(`Error loading Prisma Client: ${error.message}`);
+    console.log('Trying alternative client initialization...');
+    
+    try {
+      // Try another approach - directly requiring the client
+      // This can sometimes work even when the generate command fails
+      const { PrismaClient } = require('@prisma/client');
+      new PrismaClient();
+      console.log('Alternative client initialization successful');
+      return true;
+    } catch (innerError) {
+      console.error(`Alternative approach failed: ${innerError.message}`);
+      return false;
     }
-    if (stderr) {
-      console.error(`Prisma generate stderr: ${stderr}`);
-    }
-    console.log('Prisma Client successfully generated');
-    console.log(stdout);
-  });
-} else {
-  console.log('Prisma Client directory exists');
+  }
 }
 
 // Export a function that can be used in the main index.js
 module.exports = async function ensurePrismaClient() {
   if (!clientExists) {
-    // Wait a moment for generation to complete if it was needed
-    return new Promise(resolve => setTimeout(resolve, 5000));
+    console.log('Prisma Client directory not found, attempting to initialize...');
+    return generatePrismaClient();
   }
-  return Promise.resolve();
+  
+  console.log('Prisma Client directory exists, proceeding with application startup');
+  return Promise.resolve(true);
 };

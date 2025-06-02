@@ -31,15 +31,16 @@
     "seed": "node --loader ts-node/esm prisma/seed.ts"
   },
   "scripts": {
-    "postinstall": "prisma generate",
+    "postinstall": "node prisma/load-env.js && node -e \"try { require('@prisma/client'); } catch (e) { console.log('Prisma Client not found, installing...'); process.exit(1); }\" || npx prisma generate",
     "dev": "nodemon src/index.js",
     "start": "node index.js",
     "prebuild": "node prisma/load-env.js",
-    "build": "node prisma/setup-github-env.js && prisma generate",
+    "build": "node prisma/setup-github-env.js && node -e \"try { require('@prisma/client'); } catch (e) { console.log('Installing Prisma Client...'); process.exit(1); }\" || npx prisma generate",
     "postbuild": "cross-env NODE_ENV=production prisma migrate deploy",
-    "prisma:generate": "node prisma/load-env.js && prisma generate",
-    "prisma:migrate": "node prisma/load-env.js && prisma migrate deploy",
-    "prisma:studio": "prisma studio",
-    "github:setup-env": "node prisma/setup-github-env.js"
+    "prisma:generate": "node prisma/load-env.js && npx prisma generate",
+    "prisma:migrate": "node prisma/load-env.js && npx prisma migrate deploy",
+    "prisma:studio": "npx prisma studio",
+    "github:setup-env": "node prisma/setup-github-env.js",
+    "azure:deploy": "node prisma/load-env.js && node -e \"console.log('Azure deployment preparation')\" && npx prisma generate"
   }
 }
