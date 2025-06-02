@@ -9,9 +9,20 @@
   }],
   "routes": [
     {
+      "src": "/api/auth/(.*)",
+      "dest": "https://e-helpdesk-front.vercel.app/api/auth/$1"
+    },
+    {
       "src": "/(.*)",
       "dest": "index.js"
     }
   ],
-  "buildCommand": "npm run build"
+  "buildCommand": "npm run build",
+  "env": {
+    "DATABASE_URL": "@database_url",
+    "PORT": "8080",
+    "DOMAIN": "dev-so03q0yu6n6ltwg2.us.auth0.com",
+    "CLIENT_ID": "@client_id",
+    "CLIENT_SECRET": "@client_secret"
+  }
 }
