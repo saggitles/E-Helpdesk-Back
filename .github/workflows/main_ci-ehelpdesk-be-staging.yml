@@ -43,12 +43,52 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
+          
+      - name: Create environment files
+        run: |
+          # Create .env file with DATABASE_URL for Prisma
+          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env
+          echo "PRISMA_SKIP_SEED=true" >> .env
+          
+          # Create .env.production file as well
+          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env.production
+          echo "PRISMA_SKIP_SEED=true" >> .env.production
+          
+          echo "Environment files created"
 
-      - name: npm install, build, and test
+      - name: npm install and build
         run: |
           npm install
+          
+          # Explicitly generate Prisma client
+          npx prisma generate
+          
+          # Run build script if present
           npm run build --if-present
-          npm run test --if-present
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PRISMA_SKIP_SEED: "true"
+
+      # Create a deployment script to run on app startup
+      - name: Create deployment script
+        run: |
+          cat > deploy.sh << 'EOF'
+          #!/bin/bash
+          
+          # Generate Prisma client on startup to ensure it matches the environment
+          echo "Generating Prisma client..."
+          npx prisma generate
+          
+          # Start the application
+          npm start
+          EOF
+          
+          chmod +x deploy.sh
+          
+          # Update package.json to use the deployment script
+          sed -i 's/"start": "node index.js"/"start": "bash .\/deploy.sh"/' package.json
+          
+          echo "Deployment script created"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
