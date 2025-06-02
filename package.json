@@ -33,7 +33,7 @@
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "nodemon src/index.js",
-    "start": "node server.js",
+    "start": "node index.js",
     "prebuild": "node prisma/load-env.js",
     "build": "node prisma/setup-github-env.js && prisma generate",
     "postbuild": "cross-env NODE_ENV=production prisma migrate deploy",
