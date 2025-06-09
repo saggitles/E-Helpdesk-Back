@@ -10,6 +10,11 @@ if (process.env.NODE_ENV === 'production') {
   config({ path: path.resolve(__dirname, '../.env.production') });
 }
 
+// Also try to load from .env.staging if we're in staging
+if (process.env.NODE_ENV === 'staging') {
+  config({ path: path.resolve(__dirname, '../.env.staging') });
+}
+
 // Log that environment variables were loaded (but don't print the actual values for security)
 console.log('Environment variables loaded. DATABASE_URL is', process.env.DATABASE_URL ? 'set' : 'not set');
 
