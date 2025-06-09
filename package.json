@@ -31,7 +31,7 @@
     "seed": "node --loader ts-node/esm prisma/seed.ts"
   },
   "scripts": {
-    "postinstall": "node prisma/load-env.js && node -e \"try { require('@prisma/client'); } catch (e) { console.log('Prisma Client not found, installing...'); process.exit(1); }\" || npx prisma generate",
+    "postinstall": "node prisma/load-env.js && node prisma/azure-postinstall.js",
     "dev": "nodemon src/index.js",
     "start": "bash ./deploy.sh",
     "prebuild": "node prisma/load-env.js && node prisma/azure-prebuild.js",
@@ -43,6 +43,7 @@
     "github:setup-env": "node prisma/setup-github-env.js",
     "azure:deploy": "node prisma/load-env.js && node prisma/azure-generate.js",
     "azure:prebuild": "node prisma/load-env.js && node prisma/azure-prebuild.js",
+    "azure:postinstall": "node prisma/azure-postinstall.js",
     "azure:migrate": "node prisma/load-env.js && node -e \"try { require('@prisma/client'); console.log('Using existing Prisma client'); } catch (e) { console.log('Database is already set up'); }\"",
     "azure:deploy:staging": "cross-env NODE_ENV=staging bash ./deploy-to-azure-staging.sh"
   }
