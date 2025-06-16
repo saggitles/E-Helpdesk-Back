@@ -1,45 +1,69 @@
 #!/bin/bash
-# Custom deployment script for Azure that avoids permission issues
-# This script avoids operations that require root permissions
+#==============================================================================
+# E-Helpdesk Backend Deployment Script for Azure App Service
+# 
+# This script handles the deployment process for the E-Helpdesk backend in 
+# Azure App Service environments, ensuring proper database migration and
+# application startup with appropriate permissions.
+#
+# Maintained by: E-Helpdesk Development Team
+# Last updated: June 16, 2025
+#==============================================================================
 
-echo "Starting deployment process..."
-echo "Using NODE_ENV: $NODE_ENV"
+set -e  # Exit immediately if a command exits with a non-zero status
 
-# Set TMPDIR to use a writable location that doesn't require permissions changes
-# This avoids the chown/chmod issues on /temp
+# Log function for consistent output formatting
+log() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+}
+
+log "Starting E-Helpdesk backend deployment"
+log "Environment: ${NODE_ENV:-production}"
+
+#------------------------------------------------------------------------------
+# Environment Configuration
+#------------------------------------------------------------------------------
+
+# Configure writable temp directory locations to avoid permission issues
+# Azure App Service restricts access to system temp directories
+log "Configuring temporary directories"
 export TMPDIR="/home/site/wwwroot/tmp"
 export TEMP="/home/site/wwwroot/tmp"
 export TMP="/home/site/wwwroot/tmp"
 
-# Create a temp directory in a location we can write to without changing permissions
-echo "Setting up temporary directory in a writable location..."
+# Create temp directory with appropriate permissions
 mkdir -p $TMPDIR
+log "Temporary directory configured at $TMPDIR"
 
-# Fix permissions for Prisma files based on Stack Overflow solution
-echo "Fixing permissions for Prisma files..."
-if [ -d "node_modules/.prisma" ]; then
-  echo "Setting correct permissions for node_modules/.prisma"
-  chmod -R 755 node_modules/.prisma
-fi
+#------------------------------------------------------------------------------
+# Prisma Configuration and Permissions
+#------------------------------------------------------------------------------
 
-# Create .prisma directory if it doesn't exist
+# Set up Prisma directories with correct permissions
+# This is critical for Prisma to work in Azure App Service's restricted environment
+log "Setting up Prisma directories and permissions"
+
+# Create .prisma directory if needed
 mkdir -p node_modules/.prisma
 
-# Set correct permissions (this is the key fix from Stack Overflow)
-echo "Setting permissions for node_modules/.prisma"
+# Set proper permissions - this is essential for Prisma to work
 chmod -R 755 node_modules/.prisma
+log "Prisma directory permissions configured"
 
-# Load environment variables
-echo "Loading environment variables..."
+#------------------------------------------------------------------------------
+# Environment and Database Setup
+#------------------------------------------------------------------------------
+
+# Load environment variables from appropriate .env file
+log "Loading environment configuration"
 node ./prisma/load-env.js
 
-# Apply migrations to existing database (without creating a new one)
-echo "Applying pending migrations to existing database..."
+# Apply database migrations safely to existing database
+log "Applying pending database migrations"
 node -e "
 const { execSync } = require('child_process');
 try {
-  console.log('Running Prisma migrate deploy...');
-  // Using the Node.js API to avoid permission issues with prisma CLI
+  console.log('Executing Prisma migrate deploy...');
   execSync('node ./node_modules/prisma/build/index.js migrate deploy --schema=./prisma/schema.prisma', { 
     stdio: 'inherit',
     env: {
@@ -47,22 +71,33 @@ try {
       NODE_ENV: process.env.NODE_ENV || 'production'
     }
   });
-  console.log('Migration completed successfully');
+  console.log('Database migration completed successfully');
 } catch (error) {
-  console.error('Error during migration:', error.message);
-  console.log('Attempting to continue despite migration error...');
+  console.error('Migration error:', error.message);
+  console.log('Continuing deployment despite migration issues');
 }
 "
 
-# Database migration verification using direct PG connection
-echo "Verifying database connection and schema compatibility..."
-node ./prisma/azure-migrate.js
+#------------------------------------------------------------------------------
+# Database Verification
+#------------------------------------------------------------------------------
 
-# If the verification was successful, start the app
-if [ $? -eq 0 ]; then
-  echo "Database verification successful, starting application..."
+# Verify database connection and schema compatibility
+log "Verifying database connection and schema compatibility"
+node ./prisma/azure-migrate.js
+MIGRATION_STATUS=$?
+
+#------------------------------------------------------------------------------
+# Application Startup
+#------------------------------------------------------------------------------
+
+# Start application if database verification succeeded
+if [ $MIGRATION_STATUS -eq 0 ]; then
+  log "Database verification successful"
+  log "Starting E-Helpdesk backend application"
   node index.js
 else
-  echo "Database verification failed. Please check your database connection and schema."
+  log "ERROR: Database verification failed"
+  log "Please check your database connection string and schema compatibility"
   exit 1
 fi
