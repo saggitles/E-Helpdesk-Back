@@ -19,6 +19,7 @@ try {
   console.log('Setting proper permissions for Prisma directories');
   if (process.platform !== 'win32') { // Skip on Windows dev environments
     execSync('chmod -R 755 node_modules/.prisma', { stdio: 'inherit' });
+    execSync('chmod -R 755 node_modules/prisma', { stdio: 'inherit' });
   }
   
   // Generate Prisma client safely
@@ -34,7 +35,7 @@ try {
     const { execSync } = require('child_process');
     
     try {
-      execSync('node node_modules/prisma/build/index.js generate', { 
+      execSync('node ./node_modules/prisma/build/index.js generate', { 
         stdio: 'inherit',
         env: {
           ...process.env,

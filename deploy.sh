@@ -45,10 +45,20 @@ log "Setting up Prisma directories and permissions"
 
 # Create .prisma directory if needed
 mkdir -p node_modules/.prisma
+mkdir -p node_modules/prisma/build
 
 # Set proper permissions - this is essential for Prisma to work
 chmod -R 755 node_modules/.prisma
+chmod -R 755 node_modules/prisma
 log "Prisma directory permissions configured"
+
+# Ensure Prisma binary is executable
+if [ -f "node_modules/prisma/build/index.js" ]; then
+  chmod +x node_modules/prisma/build/index.js
+  log "Prisma CLI permissions set"
+else
+  log "Warning: Prisma CLI not found at expected location"
+fi
 
 #------------------------------------------------------------------------------
 # Environment and Database Setup

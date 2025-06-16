@@ -16,9 +16,11 @@ if (!fs.existsSync(prismaClientDir)) {
   fs.mkdirSync(prismaClientDir, { recursive: true });
 }
 
-// Run prisma generate during the build process
+// Run prisma generate during the build process - use local installation path
 console.log('Running Prisma client generation...');
-exec('npx prisma generate', (error, stdout, stderr) => {
+const prismaCommand = 'node ./node_modules/prisma/build/index.js generate';
+console.log(`Executing: ${prismaCommand}`);
+exec(prismaCommand, (error, stdout, stderr) => {
   if (error) {
     console.error(`Error generating Prisma client: ${error.message}`);
     console.log('Attempting to continue despite error...');
