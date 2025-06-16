@@ -33,6 +33,27 @@ chmod -R 755 node_modules/.prisma
 echo "Loading environment variables..."
 node ./prisma/load-env.js
 
+# Apply migrations to existing database (without creating a new one)
+echo "Applying pending migrations to existing database..."
+node -e "
+const { execSync } = require('child_process');
+try {
+  console.log('Running Prisma migrate deploy...');
+  // Using the Node.js API to avoid permission issues with prisma CLI
+  execSync('node ./node_modules/prisma/build/index.js migrate deploy --schema=./prisma/schema.prisma', { 
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      NODE_ENV: process.env.NODE_ENV || 'production'
+    }
+  });
+  console.log('Migration completed successfully');
+} catch (error) {
+  console.error('Error during migration:', error.message);
+  console.log('Attempting to continue despite migration error...');
+}
+"
+
 # Database migration verification using direct PG connection
 echo "Verifying database connection and schema compatibility..."
 node ./prisma/azure-migrate.js
