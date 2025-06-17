@@ -26,7 +26,6 @@ env:
   AZURE_WEBAPP_NAME: ci-ehelpdesk-be-staging # set this to your application's name
   AZURE_WEBAPP_PACKAGE_PATH: "." # set this to the path to your web app project, defaults to the repository root
   NODE_VERSION: "20.x" # set this to the node version to use
-  DATABASE_URL: ${{ secrets.DATABASE_URL }}
   PRISMA_SKIP_SEED: "true" # Skip automatic seeding during Prisma operations
 
 permissions:
@@ -43,52 +42,19 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
-          
-      - name: Create environment files
-        run: |
-          # Create .env file with DATABASE_URL for Prisma
-          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env
-          echo "PRISMA_SKIP_SEED=true" >> .env
-          
-          # Create .env.production file as well
-          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env.production
-          echo "PRISMA_SKIP_SEED=true" >> .env.production
-          
-          echo "Environment files created"
 
-      - name: npm install and build
+      - name: npm install, build, and test
         run: |
           npm install
-          
-          # Explicitly generate Prisma client
-          npx prisma generate
-          
-          # Run build script if present
           npm run build --if-present
+          npm run test --if-present
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          PRISMA_SKIP_SEED: "true"
 
-      # Create a deployment script to run on app startup
-      - name: Create deployment script
-        run: |
-          cat > deploy.sh << 'EOF'
-          #!/bin/bash
-          
-          # Generate Prisma client on startup to ensure it matches the environment
-          echo "Generating Prisma client..."
-          npx prisma generate
-          
-          # Start the application
-          npm start
-          EOF
-          
-          chmod +x deploy.sh
-          
-          # Update package.json to use the deployment script
-          sed -i 's/"start": "node index.js"/"start": "bash .\/deploy.sh"/' package.json
-          
-          echo "Deployment script created"
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -111,6 +77,11 @@ jobs:
         with:
           name: node-app
 
+      - name: Prepare for deployment
+        run: |
+          chmod +x ./deploy.sh
+          echo "Setting up files for Azure deployment"
+
       - name: "Deploy to Azure WebApp"
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v2
@@ -118,3 +89,4 @@ jobs:
           app-name: "ci-ehelpdesk-be-staging"
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_3D53255A9C744DB7A6458E5D647265A7 }}
           package: .
+          startup-command: "sh ./deploy.sh"
