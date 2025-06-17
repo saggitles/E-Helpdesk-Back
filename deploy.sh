@@ -1,13 +1,6 @@
 #!/bin/bash
 #==============================================================================
 # E-Helpdesk Backend Deployment Script for Azure App Service
-# 
-# This script handles the deployment process for the E-Helpdesk backend in 
-# Azure App Service environments, ensuring proper database migration and
-# application startup with appropriate permissions.
-#
-# Maintained by: E-Helpdesk Development Team
-# Last updated: June 16, 2025
 #==============================================================================
 
 set -e  # Exit immediately if a command exits with a non-zero status
@@ -24,76 +17,34 @@ log "Environment: ${NODE_ENV:-production}"
 # Environment Configuration
 #------------------------------------------------------------------------------
 
-# Configure writable temp directory locations to avoid permission issues
-# Azure App Service restricts access to system temp directories
-log "Configuring temporary directories"
+# Configure writable temp directory to avoid permission issues
+log "Configuring temporary directory"
 export TMPDIR="/home/site/wwwroot/tmp"
 export TEMP="/home/site/wwwroot/tmp"
 export TMP="/home/site/wwwroot/tmp"
 
-# Create temp directory with appropriate permissions
+# Create temp directory
 mkdir -p $TMPDIR
 log "Temporary directory configured at $TMPDIR"
 
 #------------------------------------------------------------------------------
-# Prisma Configuration and Permissions
-#------------------------------------------------------------------------------
-
-# Set up Prisma directories with correct permissions
-# This is critical for Prisma to work in Azure App Service's restricted environment
-log "Setting up Prisma directories and permissions"
-
-# Create .prisma directory if needed
-mkdir -p node_modules/.prisma
-mkdir -p node_modules/prisma/build
-
-# Set proper permissions - this is essential for Prisma to work
-chmod -R 755 node_modules/.prisma
-chmod -R 755 node_modules/prisma
-log "Prisma directory permissions configured"
-
-# Ensure Prisma binary is executable
-if [ -f "node_modules/prisma/build/index.js" ]; then
-  chmod +x node_modules/prisma/build/index.js
-  log "Prisma CLI permissions set"
-else
-  log "Warning: Prisma CLI not found at expected location"
-fi
-
-#------------------------------------------------------------------------------
-# Environment and Database Setup
+# Load Environment Variables
 #------------------------------------------------------------------------------
 
 # Load environment variables from appropriate .env file
 log "Loading environment configuration"
 node ./prisma/load-env.js
 
-# Apply database migrations safely to existing database
-log "Applying pending database migrations"
-node -e "
-const { execSync } = require('child_process');
-try {
-  console.log('Executing Prisma migrate deploy...');
-  execSync('node ./node_modules/prisma/build/index.js migrate deploy --schema=./prisma/schema.prisma', { 
-    stdio: 'inherit',
-    env: {
-      ...process.env,
-      NODE_ENV: process.env.NODE_ENV || 'production'
-    }
-  });
-  console.log('Database migration completed successfully');
-} catch (error) {
-  console.error('Migration error:', error.message);
-  console.log('Continuing deployment despite migration issues');
-}
-"
-
 #------------------------------------------------------------------------------
-# Database Verification
+# Database Setup
 #------------------------------------------------------------------------------
 
-# Verify database connection and schema compatibility
-log "Verifying database connection and schema compatibility"
+# Apply database migrations using simplified approach
+log "Applying database migrations"
+npx prisma migrate deploy --schema=./prisma/schema.prisma
+
+# Verify database connection and schema
+log "Verifying database connection"
 node ./prisma/azure-migrate.js
 MIGRATION_STATUS=$?
 

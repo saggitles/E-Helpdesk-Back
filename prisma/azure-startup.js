@@ -1,11 +1,6 @@
-// This file ensures Prisma Client is properly generated on Azure Functions
+// Script to ensure Prisma Client is properly generated on Azure
 const path = require('path');
-const fs = require('fs');
-const { execSync } = require('child_process');
-
-// Check if Prisma client directory exists
-const prismaClientDir = path.join(process.cwd(), 'node_modules', '.prisma', 'client');
-const clientExists = fs.existsSync(prismaClientDir);
+require('./load-env'); // Load environment variables
 
 async function initializePrismaClient() {
   try {
@@ -14,36 +9,30 @@ async function initializePrismaClient() {
     // Try to load the Prisma client directly
     const { PrismaClient } = require('@prisma/client');
     
-    console.log('Prisma Client successfully loaded');
+    // Test connection
+    const prisma = new PrismaClient();
+    await prisma.$connect();
+    await prisma.$disconnect();
+    
+    console.log('Prisma Client successfully loaded and connected');
     return true;
   } catch (error) {
     console.error(`Error loading Prisma Client: ${error.message}`);
-    console.log('Prisma Client failed to load. The database might not be migrated properly.');
-    return false;
+    
+    // If client doesn't exist, try generating it
+    try {
+      console.log('Attempting to generate Prisma client...');
+      const { execSync } = require('child_process');
+      execSync('npx prisma generate', { stdio: 'inherit' });
+      
+      console.log('Prisma client generated successfully');
+      return true;
+    } catch (genError) {
+      console.error('Failed to generate Prisma client:', genError.message);
+      return false;
+    }
   }
 }
 
 // Export a function that can be used in the main index.js
-module.exports = async function ensurePrismaClient() {
-  // First check if we can load the client directly
-  const clientLoaded = await initializePrismaClient();
-  
-  if (clientLoaded) {
-    console.log('Prisma Client loaded successfully, proceeding with application startup');
-    return true;
-  } else {
-    console.log('Attempting to load database schema from existing migrations...');
-    
-    try {
-      // Since we're focusing on migrations instead of generation
-      // This will ensure the database structure matches our schema
-      require('./load-env'); // Load environment variables
-      
-      console.log('Database is already set up. Application will use existing schema.');
-      return true;
-    } catch (migrationError) {
-      console.error('Error during database initialization:', migrationError);
-      return false;
-    }
-  }
-};
+module.exports = initializePrismaClient;

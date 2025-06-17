@@ -1,17 +1,13 @@
-// Script to handle Prisma migrations for Azure Functions without client generation
-// This approach focuses purely on making sure the database structure matches the schema
-
+// Script to verify database connection in Azure environment
 const path = require('path');
 const fs = require('fs');
 require('./load-env'); // Load environment variables
 
-console.log('Azure Prisma Migration-Only Script');
+console.log('Azure Database Connection Verification');
 console.log('Node version:', process.version);
-console.log('Current directory:', process.cwd());
 console.log('DATABASE_URL is', process.env.DATABASE_URL ? 'set' : 'not set');
 
 // Use environment-provided temp dirs or fall back to app-local location
-// This helps avoid permission issues with system temp directories
 process.env.TMPDIR = process.env.TMPDIR || path.join(process.cwd(), 'tmp');
 process.env.TEMP = process.env.TEMP || path.join(process.cwd(), 'tmp');
 process.env.TMP = process.env.TMP || path.join(process.cwd(), 'tmp');
@@ -26,12 +22,11 @@ if (!fs.existsSync(process.env.TMPDIR)) {
   }
 }
 
-// Function to test database connection directly without requiring prisma client generation
+// Function to test database connection directly
 async function testDatabaseConnection() {
   try {
-    console.log('Testing database connection directly...');
+    console.log('Testing database connection...');
     
-    // Use pg directly instead of Prisma to avoid client generation
     const { Pool } = require('pg');
     const connectionString = process.env.DATABASE_URL;
     
@@ -41,36 +36,12 @@ async function testDatabaseConnection() {
     }
     
     const pool = new Pool({ connectionString });
-    
-    // Test connection
     const client = await pool.connect();
     console.log('Database connection successful!');
     
-    // Test query to check schema
-    console.log('Testing database schema compatibility...');
-    const tablesResult = await client.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public' 
-      ORDER BY table_name;
-    `);
-    
-    console.log(`Found ${tablesResult.rows.length} tables in the database`);
-    
-    // Check for essential tables based on your schema
-    const essentialTables = ['user', 'ticket', 'comment', 'file', 'image', 'user_role', 'jira_ticket', 'm2m_token'];
-    const foundTables = tablesResult.rows.map(row => row.table_name);
-    
-    console.log('Found tables:', foundTables.join(', '));
-    
-    // Check if we have at least some of our expected tables
-    const missingTables = essentialTables.filter(table => !foundTables.includes(table));
-    if (missingTables.length > essentialTables.length / 2) {
-      console.warn(`Warning: Many expected tables are missing: ${missingTables.join(', ')}`);
-      console.warn('The database schema might not be compatible with the application');
-    } else {
-      console.log('Database schema appears to be compatible with the application');
-    }
+    // Simple test query to verify connection
+    const result = await client.query('SELECT NOW()');
+    console.log(`Database timestamp: ${result.rows[0].now}`);
     
     client.release();
     await pool.end();
@@ -86,10 +57,10 @@ async function testDatabaseConnection() {
 testDatabaseConnection()
   .then(success => {
     if (success) {
-      console.log('Database migration verification completed successfully');
+      console.log('Database verification completed successfully');
       process.exit(0);
     } else {
-      console.error('Database migration verification failed');
+      console.error('Database verification failed');
       process.exit(1);
     }
   })
