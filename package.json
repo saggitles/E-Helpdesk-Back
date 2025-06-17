@@ -33,7 +33,7 @@
   "scripts": {
     "postinstall": "node prisma/load-env.js && node prisma/azure-postinstall.js",
     "dev": "nodemon src/index.js",
-    "start": "bash ./deploy.sh",
+    "start": "node index.js",
     "prebuild": "node prisma/load-env.js && node prisma/azure-prebuild.js",
     "build": "node prisma/setup-github-env.js && node -e \"try { require('@prisma/client'); } catch (e) { console.log('Installing Prisma Client...'); process.exit(1); }\" || node ./node_modules/prisma/build/index.js generate",
     "postbuild": "cross-env NODE_ENV=production node ./node_modules/prisma/build/index.js migrate deploy",
