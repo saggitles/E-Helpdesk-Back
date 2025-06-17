@@ -34,7 +34,7 @@
     "postinstall": "node prisma/load-env.js",
     "dev": "nodemon src/index.js",
     "start": "node index.js",
-    "build": "node prisma/setup-github-env.js && prisma generate",
+    "build": "npx prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:studio": "prisma studio",

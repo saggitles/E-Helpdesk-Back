@@ -49,21 +49,26 @@ jobs:
           prisma -v
           echo "Prisma CLI installed globally"
 
-      - name: npm install, build, and test
+      - name: Setup environment files for GitHub Actions
         run: |
-          npm install
-          npm run build --if-present
-          npm run test --if-present
+          node ./prisma/setup-github-env.js
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PORT: ${{ secrets.PORT || '8080' }}
+          DOMAIN: ${{ secrets.DOMAIN }}
+          CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+
+      - name: npm install
+        run: npm install
 
       - name: Generate Prisma Client
-        run: prisma generate
+        run: npx prisma generate
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           
       - name: Run Prisma Migrations
-        run: prisma migrate deploy
+        run: npx prisma migrate deploy
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           
