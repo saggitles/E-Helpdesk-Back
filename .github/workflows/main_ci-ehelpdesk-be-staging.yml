@@ -43,6 +43,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
 
+      - name: Install global dependencies
+        run: |
+          npm install -g prisma
+          prisma -v
+          echo "Prisma CLI installed globally"
+
       - name: npm install, build, and test
         run: |
           npm install
@@ -52,15 +58,20 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Generate Prisma Client
-        run: npx prisma generate
+        run: prisma generate
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      - name: Prepare deploy script
+      - name: Prepare deployment files
         run: |
           chmod +x ./deploy.sh
-          # Make sure web.config is properly set up for Windows
-          echo "Preparing deployment files for Windows environment"
+          # Create a startup script that installs prisma globally
+          echo "#!/bin/bash" > ./startup.sh
+          echo "npm install -g prisma" >> ./startup.sh
+          echo "cd /home/site/wwwroot" >> ./startup.sh
+          echo "sh ./deploy.sh" >> ./startup.sh
+          chmod +x ./startup.sh
+          echo "Prepared deployment files with global Prisma installation"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
