@@ -60,7 +60,7 @@ jobs:
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
 
       - name: npm install
-        run: npm ci
+        run: npm install --include=dev
 
       - name: Generate Prisma Client
         run: npx prisma generate
