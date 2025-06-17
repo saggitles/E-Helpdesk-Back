@@ -36,6 +36,14 @@ log "Loading environment configuration"
 node ./prisma/load-env.js
 
 #------------------------------------------------------------------------------
+# Generate Prisma Client
+#------------------------------------------------------------------------------
+
+# Generate Prisma client before starting the application
+log "Generating Prisma client"
+node ./prisma/azure-generate.js
+
+#------------------------------------------------------------------------------
 # Start Application
 #------------------------------------------------------------------------------
 

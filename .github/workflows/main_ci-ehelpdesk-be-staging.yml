@@ -66,12 +66,12 @@ jobs:
         run: npx prisma generate
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          
+
       - name: Run Prisma Migrations
         run: npx prisma migrate deploy
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          
+
       - name: Test Database Connection
         run: node ./prisma/azure-migrate.js
         env:
@@ -79,12 +79,15 @@ jobs:
 
       - name: Prepare deployment files
         run: |
-          # Create a simplified startup script
+          # Create a complete startup script that also generates Prisma client
           echo "#!/bin/bash" > ./startup.sh
           echo "cd /home/site/wwwroot" >> ./startup.sh
+          echo "echo \"Generating Prisma client before starting application\"" >> ./startup.sh
+          echo "npx prisma generate" >> ./startup.sh
+          echo "echo \"Starting application\"" >> ./startup.sh
           echo "node index.js" >> ./startup.sh
           chmod +x ./startup.sh
-          echo "Prepared simplified startup script"
+          echo "Prepared complete startup script with Prisma client generation"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
