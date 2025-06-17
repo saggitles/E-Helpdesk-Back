@@ -33,8 +33,7 @@
   "scripts": {
     "postinstall": "node prisma/load-env.js",
     "dev": "nodemon src/index.js",
-    "prestart": "npx prisma generate",
-    "start": "node index.js",
+    "start": "npx prisma generate && node index.js",
     "build": "npx prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
