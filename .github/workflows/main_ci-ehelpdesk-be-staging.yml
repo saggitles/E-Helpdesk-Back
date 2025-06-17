@@ -61,17 +61,25 @@ jobs:
         run: prisma generate
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          
+      - name: Run Prisma Migrations
+        run: prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          
+      - name: Test Database Connection
+        run: node ./prisma/azure-migrate.js
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Prepare deployment files
         run: |
-          chmod +x ./deploy.sh
-          # Create a startup script that installs prisma globally
+          # Create a simplified startup script
           echo "#!/bin/bash" > ./startup.sh
-          echo "npm install -g prisma" >> ./startup.sh
           echo "cd /home/site/wwwroot" >> ./startup.sh
-          echo "sh ./deploy.sh" >> ./startup.sh
+          echo "node index.js" >> ./startup.sh
           chmod +x ./startup.sh
-          echo "Prepared deployment files with global Prisma installation"
+          echo "Prepared simplified startup script"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4

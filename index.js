@@ -4,15 +4,13 @@ const cors = require('cors');
 const app = express();
 const fileUpload = require('express-fileupload');
 const path = require('path');
-const ensurePrismaClient = require('./prisma/azure-startup');
 
 require('dotenv').config();
 
-// Initialize the application asynchronously to ensure Prisma is ready
+// Initialize the application
 async function initializeApp() {
-  // Ensure Prisma Client is properly generated (important for Azure Functions)
-  await ensurePrismaClient();
-
+  // Prisma client already generated and migrations already run during deployment
+  
   app.use(fileUpload({
     createParentPath: true,
   }));
@@ -49,7 +47,7 @@ async function initializeApp() {
 
   const PORT = process.env.PORT || 8080;
   app.listen(PORT, () => {
-    console.log(`Api is running on port ${PORT}`);
+    console.log(`API is running on port ${PORT}`);
   });
 }
 

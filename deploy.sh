@@ -1,6 +1,6 @@
 #!/bin/bash
 #==============================================================================
-# E-Helpdesk Backend Deployment Script for Azure App Service
+# E-Helpdesk Backend Simplified Deployment Script for Azure App Service
 #==============================================================================
 
 set -e  # Exit immediately if a command exits with a non-zero status
@@ -10,7 +10,7 @@ log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
-log "Starting E-Helpdesk backend deployment"
+log "Starting E-Helpdesk backend"
 log "Environment: ${NODE_ENV:-production}"
 
 #------------------------------------------------------------------------------
@@ -36,29 +36,8 @@ log "Loading environment configuration"
 node ./prisma/load-env.js
 
 #------------------------------------------------------------------------------
-# Database Setup
+# Start Application
 #------------------------------------------------------------------------------
 
-# Apply database migrations using simplified approach
-log "Applying database migrations"
-npx prisma migrate deploy --schema=./prisma/schema.prisma
-
-# Verify database connection and schema
-log "Verifying database connection"
-node ./prisma/azure-migrate.js
-MIGRATION_STATUS=$?
-
-#------------------------------------------------------------------------------
-# Application Startup
-#------------------------------------------------------------------------------
-
-# Start application if database verification succeeded
-if [ $MIGRATION_STATUS -eq 0 ]; then
-  log "Database verification successful"
-  log "Starting E-Helpdesk backend application"
-  node index.js
-else
-  log "ERROR: Database verification failed"
-  log "Please check your database connection string and schema compatibility"
-  exit 1
-fi
+log "Starting E-Helpdesk backend application"
+node index.js
