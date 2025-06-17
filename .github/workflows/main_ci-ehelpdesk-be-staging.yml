@@ -56,6 +56,12 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+      - name: Prepare deploy script
+        run: |
+          chmod +x ./deploy.sh
+          # Make sure web.config is properly set up for Windows
+          echo "Preparing deployment files for Windows environment"
+
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
@@ -77,11 +83,6 @@ jobs:
         with:
           name: node-app
 
-      - name: Prepare for deployment
-        run: |
-          chmod +x ./deploy.sh
-          echo "Setting up files for Azure deployment"
-
       - name: "Deploy to Azure WebApp"
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v2
@@ -89,4 +90,3 @@ jobs:
           app-name: "ci-ehelpdesk-be-staging"
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_3D53255A9C744DB7A6458E5D647265A7 }}
           package: .
-          startup-command: "sh ./deploy.sh"
