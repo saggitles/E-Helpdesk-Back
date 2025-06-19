@@ -2,7 +2,7 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  
+
   "dependencies": {
     "@azure/storage-blob": "^12.17.0",
     "@prisma/client": "^5.7.0",
@@ -37,7 +37,7 @@
   "scripts": {
     "postinstall": "node prisma/load-env.js",
     "dev": "nodemon src/index.js",
-    "start": "npx prisma generate && npx prisma migrate deploy && node src/index.js",
+    "start": "npx prisma generate --force && npx prisma migrate deploy && node src/index.js",
     "build": "npx prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
