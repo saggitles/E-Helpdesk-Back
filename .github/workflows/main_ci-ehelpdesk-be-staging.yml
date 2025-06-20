@@ -69,24 +69,21 @@ jobs:
 
       - name: Run Prisma Migrations
         run: |
-          echo "🔧 Resetting database migration state..."
-          echo "⚠️ This will reset the migration history to match the current codebase"
-
-          # Try to reset the migration history first
-          if npx prisma migrate reset --force; then
-            echo "✅ Database migration state reset successfully"
+          echo "🔧 Running database migrations..."
+          
+          # First, try to deploy migrations normally
+          if npx prisma migrate deploy; then
+            echo "✅ Migrations deployed successfully"
           else
-            echo "❌ Migration reset failed, trying alternative approach..."
+            echo "❌ Migration deploy failed, trying reset approach..."
             
-            # Alternative: Use db push to sync the schema
-            echo "🔄 Attempting to sync database schema..."
-            if npx prisma db push; then
-              echo "📝 Marking current migration as applied..."
-              npx prisma migrate resolve --applied 20250508190922_update_schema || echo "Could not mark migration as applied, but continuing..."
-              echo "✅ Database schema synced successfully"
+            # If deploy fails, try reset and then mark as applied
+            if npx prisma migrate reset --force; then
+              echo "✅ Database reset successfully"
             else
-              echo "❌ Schema sync failed, but continuing with deployment..."
-              echo "💡 Database may need manual intervention"
+              echo "⚠️ Reset failed, trying db push instead..."
+              npx prisma db push --force-reset
+              npx prisma migrate resolve --applied 20250508190922_update_schema || echo "Could not mark migration as applied"
             fi
           fi
         env:
@@ -96,18 +93,6 @@ jobs:
         run: node ./prisma/azure-migrate.js
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-
-      - name: Prepare deployment files
-        run: |
-          # Create a complete startup script that also generates Prisma client
-          echo "#!/bin/bash" > ./startup.sh
-          echo "cd /home/site/wwwroot" >> ./startup.sh
-          echo "echo \"Generating Prisma client before starting application\"" >> ./startup.sh
-          echo "npx prisma generate" >> ./startup.sh
-          echo "echo \"Starting application\"" >> ./startup.sh
-          echo "node index.js" >> ./startup.sh
-          chmod +x ./startup.sh
-          echo "Prepared complete startup script with Prisma client generation"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
