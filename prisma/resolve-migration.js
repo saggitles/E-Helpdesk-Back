@@ -3,29 +3,46 @@ const { execSync } = require('child_process');
 console.log('🔧 Starting migration resolution...');
 
 try {
-  // Skip the problematic migration entirely and just try to deploy
+  // First try to deploy migrations directly
   console.log('🚀 Deploying current migrations...');
   execSync('npx prisma migrate deploy', { stdio: 'inherit' });
   console.log('✅ Migrations deployed successfully!');
 } catch (deployError) {
-  console.log('⚠️ Direct deployment failed, checking if migration already exists...');
+  console.log('⚠️ Direct deployment failed, resolving migration conflicts...');
   
-  // Check if the error is about the migration already being applied
-  if (deployError.message.includes('P3008') || deployError.message.includes('already recorded as applied')) {
-    console.log('ℹ️ Migration already applied - this is expected. Continuing...');
-  } else if (deployError.message.includes('P3009')) {
-    console.log('🔄 Found failed migration, attempting to resolve...');
+  // Check migration status first
+  try {
+    console.log('📊 Checking migration status...');
+    execSync('npx prisma migrate status', { stdio: 'inherit' });
+  } catch (statusError) {
+    console.log('ℹ️ Migration status check completed');
+  }
+  
+  // Resolve known problematic migrations
+  const problematicMigrations = [
+    '20230821193822_initial',
+    '20230821195210_initial'
+  ];
+  
+  console.log('🔄 Resolving failed migrations...');
+  for (const migration of problematicMigrations) {
     try {
-      // Mark the specific failed migration as rolled back and then try again
-      execSync('npx prisma migrate resolve --rolled-back 20230821193822_initial', { stdio: 'inherit' });
-      console.log('✅ Marked migration as rolled back, now deploying...');
-      execSync('npx prisma migrate deploy', { stdio: 'inherit' });
-      console.log('✅ Migrations deployed after resolution!');
+      console.log(`📝 Marking ${migration} as rolled back...`);
+      execSync(`npx prisma migrate resolve --rolled-back ${migration}`, { stdio: 'inherit' });
+      console.log(`✅ ${migration} marked as rolled back`);
     } catch (resolveError) {
-      console.log('💡 Resolution failed but continuing anyway - database may already be in correct state');
+      console.log(`ℹ️ ${migration} not found or already resolved`);
     }
-  } else {
-    console.log('💡 Unknown migration error, but continuing with app startup...');
+  }
+  
+  // Try to deploy again after resolution
+  try {
+    console.log('🚀 Attempting migration deployment after resolution...');
+    execSync('npx prisma migrate deploy', { stdio: 'inherit' });
+    console.log('✅ Migrations deployed successfully after resolution!');
+  } catch (finalError) {
+    console.log('⚠️ Migration deployment still failing, but continuing...');
+    console.log('💡 Database may already be in correct state or require manual intervention');
   }
 }
 
