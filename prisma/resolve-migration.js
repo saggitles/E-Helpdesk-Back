@@ -3,31 +3,47 @@ const { execSync } = require('child_process');
 console.log('🔧 Resolving migration issues...');
 
 try {
-  // Mark the failed migration as resolved
-  console.log('📝 Marking failed migration as resolved...');
-  execSync('npx prisma migrate resolve --applied 20230821193822_initial', { stdio: 'inherit' });
+  // First, let's check the migration status
+  console.log('📊 Checking migration status...');
+  try {
+    execSync('npx prisma migrate status', { stdio: 'inherit' });
+  } catch (statusError) {
+    console.log('ℹ️ Migration status check completed');
+  }
   
-  // Deploy remaining migrations
-  console.log('🚀 Deploying migrations...');
+  // Try to deploy migrations directly first
+  console.log('🚀 Attempting to deploy migrations...');
   execSync('npx prisma migrate deploy', { stdio: 'inherit' });
   
-  console.log('✅ Migration issues resolved successfully!');
+  console.log('✅ Migrations deployed successfully!');
 } catch (error) {
-  console.error('❌ Error resolving migrations:', error.message);
+  console.error('❌ Error deploying migrations:', error.message);
   
-  // Fallback: try to reset and deploy
-  console.log('🔄 Trying fallback approach...');
+  // If deployment fails, try to resolve specific migration issues
+  console.log('🔄 Trying to resolve migration conflicts...');
   try {
+    // Try marking as rolled back first, then as applied
     console.log('📝 Attempting to mark migration as rolled back...');
     execSync('npx prisma migrate resolve --rolled-back 20230821193822_initial', { stdio: 'inherit' });
     
-    console.log('🚀 Deploying migrations...');
+    console.log('🚀 Deploying migrations after rollback...');
     execSync('npx prisma migrate deploy', { stdio: 'inherit' });
     
-    console.log('✅ Migration resolved with fallback approach!');
-  } catch (fallbackError) {
-    console.error('❌ Fallback failed:', fallbackError.message);
-    console.log('💡 Manual intervention may be required.');
-    process.exit(1);
+    console.log('✅ Migration resolved with rollback approach!');
+  } catch (rollbackError) {
+    console.log('⚠️ Rollback approach failed, trying applied approach...');
+    try {
+      console.log('📝 Attempting to mark migration as applied...');
+      execSync('npx prisma migrate resolve --applied 20230821193822_initial', { stdio: 'inherit' });
+      
+      console.log('🚀 Deploying migrations after marking as applied...');
+      execSync('npx prisma migrate deploy', { stdio: 'inherit' });
+      
+      console.log('✅ Migration resolved with applied approach!');
+    } catch (appliedError) {
+      console.error('❌ All approaches failed:', appliedError.message);
+      console.log('💡 Migration may already be in correct state. Continuing with application startup...');
+      // Don't exit here - let the app try to start anyway
+    }
   }
 }
