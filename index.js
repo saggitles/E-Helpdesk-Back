@@ -29,7 +29,9 @@ async function initializeDatabase() {
     
     // Test database connection
     const { PrismaClient } = require('@prisma/client');
-    const prisma = new PrismaClient();
+    const prisma = new PrismaClient({
+      log: ['error', 'warn'],
+    });
     
     await prisma.$connect();
     console.log('✅ Database connected successfully');
@@ -42,7 +44,7 @@ async function initializeDatabase() {
     return true;
   } catch (error) {
     console.error('❌ Database initialization error:', error.message);
-    console.log('⚠️ Continuing with application startup...');
+    console.log('⚠️ Application will continue startup - database operations may fail until connection is established');
     return false;
   }
 }

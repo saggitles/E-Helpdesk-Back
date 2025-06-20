@@ -35,11 +35,12 @@
     "seed": "node --loader ts-node/esm prisma/seed.ts"
   },
   "scripts": {
-    "postinstall": "node prisma/load-env.js",
+    "postinstall": "node prisma/load-env.js && npm run prisma:generate",
     "dev": "nodemon src/index.js",
-    "start": "node index.js",
+    "start": "npm run migrate:deploy && node index.js",
     "build": "npx prisma generate",
-    "prisma:generate": "prisma generate",
+    "migrate:deploy": "npx prisma migrate deploy || echo 'Migration failed, continuing with app startup'",
+    "prisma:generate": "npx prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "github:setup-env": "node prisma/setup-github-env.js"
