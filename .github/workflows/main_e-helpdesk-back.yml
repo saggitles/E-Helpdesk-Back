@@ -1,7 +1,7 @@
 # Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
 # More GitHub Actions for Azure: https://github.com/Azure/actions
 
-name: Build and deploy Node.js app to Azure Web App - E-Helpdesk-Back
+name: Build and deploy Node.js app to Azure Web App - E-Helpdesk-back
 
 on:
   push:
@@ -56,7 +56,7 @@ jobs:
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'E-Helpdesk-Back'
+          app-name: 'E-Helpdesk-back'
           slot-name: 'Production'
           package: .
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_0A98767EE7064345AFE76A99688C991B }}
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_B848A42705384860A27675DBAFE04932 }}
