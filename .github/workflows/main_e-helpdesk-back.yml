@@ -30,12 +30,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
 
-      - name: Install global dependencies
-        run: |
-          npm install -g prisma
-          prisma -v
-          echo "Prisma CLI installed globally"
-
       - name: Setup environment files for GitHub Actions
         run: |
           node ./prisma/setup-github-env.js
@@ -50,10 +44,21 @@ jobs:
         run: npm install --include=dev
 
       - name: Generate Prisma Client
-        run: npx prisma generate
+        run: |
+          npx prisma generate
+          echo "✅ Prisma client generated successfully"
         env:
-          # Use a dummy DATABASE_URL for client generation only
-          DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Verify Prisma Client Generation
+        run: |
+          if [ -d "node_modules/.prisma/client" ]; then
+            echo "✅ Prisma client found in node_modules/.prisma/client"
+            ls -la node_modules/.prisma/client/
+          else
+            echo "❌ Prisma client not found!"
+            exit 1
+          fi
 
       - name: Build Application
         run: |
@@ -61,6 +66,11 @@ jobs:
           echo "✅ Build completed successfully"
         env:
           NODE_ENV: production
+
+      - name: Clean up development dependencies
+        run: |
+          npm prune --production
+          echo "✅ Development dependencies removed"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4

@@ -37,7 +37,7 @@
   "scripts": {
     "postinstall": "node prisma/load-env.js && npm run prisma:generate",
     "dev": "nodemon src/index.js",
-    "start": "npm run migrate:deploy && node index.js",
+    "start": "node index.js",
     "build": "npx prisma generate",
     "migrate:deploy": "npx prisma migrate deploy || echo 'Migration failed, continuing with app startup'",
     "prisma:generate": "npx prisma generate",
