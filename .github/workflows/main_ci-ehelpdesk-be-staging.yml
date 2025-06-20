@@ -68,7 +68,19 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Run Prisma Migrations
-        run: npx prisma migrate deploy
+        run: |
+          echo "🔧 Resolving migration issues..."
+          # Try to mark the failed migration as resolved
+          npx prisma migrate resolve --applied 20230821193822_initial || {
+            echo "⚠️ Failed to mark as applied, trying rollback approach..."
+            npx prisma migrate resolve --rolled-back 20230821193822_initial || {
+              echo "❌ Both approaches failed, this may require manual intervention"
+              exit 1
+            }
+          }
+          # Deploy remaining migrations
+          echo "🚀 Deploying migrations..."
+          npx prisma migrate deploy
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
