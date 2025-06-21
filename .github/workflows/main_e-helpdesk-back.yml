@@ -10,10 +10,9 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_WEBAPP_NAME: E-Helpdesk-back # set this to your application's name
-  AZURE_WEBAPP_PACKAGE_PATH: "." # set this to the path to your web app project, defaults to the repository root
-  NODE_VERSION: "20.x" # set this to the node version to use
-  PRISMA_SKIP_SEED: "true" # Skip automatic seeding during Prisma operations
+  AZURE_WEBAPP_NAME: E-Helpdesk-back
+  AZURE_WEBAPP_PACKAGE_PATH: "."
+  NODE_VERSION: "20.x"
 
 permissions:
   contents: read
@@ -40,59 +39,50 @@ jobs:
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
 
-      - name: npm install (with dev dependencies for Prisma)
-        run: npm install
+      - name: Install dependencies
+        run: npm ci --include=dev
 
-      - name: Generate Prisma Client
+      - name: Generate Prisma Client (force generation)
         run: |
           echo "🔧 Generating Prisma client..."
-          npx prisma generate
-          echo "✅ Prisma client generated successfully"
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-
-      - name: Verify Prisma Client Generation
+          # Set a dummy DATABASE_URL for generation (Prisma needs a valid format)
+          export DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
+          npx prisma generate --schema=./prisma/schema.prisma
+          echo "✅ Prisma client generated"
+        
+      - name: Verify Prisma Client exists
         run: |
-          if [ -d "node_modules/.prisma" ]; then
-            echo "✅ Prisma client found in node_modules/.prisma"
-            ls -la node_modules/.prisma/
-            if [ -d "node_modules/.prisma/client" ]; then
-              echo "✅ Client directory exists"
-              ls -la node_modules/.prisma/client/ | head -10
+          echo "🔍 Checking for Prisma client..."
+          if [ -d "node_modules/.prisma/client" ]; then
+            echo "✅ Prisma client directory found"
+            ls -la node_modules/.prisma/client/ | head -10
+            if [ -f "node_modules/.prisma/client/index.js" ]; then
+              echo "✅ Prisma client index.js exists"
             else
-              echo "❌ Client directory missing!"
+              echo "❌ Prisma client index.js missing!"
               exit 1
             fi
           else
-            echo "❌ .prisma directory not found!"
-            find node_modules -name "*prisma*" -type d
+            echo "❌ Prisma client directory not found!"
+            find . -name ".prisma" -type d 2>/dev/null || echo "No .prisma directory found anywhere"
             exit 1
           fi
 
-      - name: Create production node_modules (keep Prisma client)
+      - name: Create deployment package
         run: |
-          echo "🧹 Creating production build..."
-          # First, backup the generated Prisma client
-          cp -r node_modules/.prisma ./prisma-client-backup
-          # Remove dev dependencies
+          echo "📦 Creating deployment package..."
+          # Remove unnecessary files but keep Prisma client
+          rm -rf .git
+          rm -rf .github
+          rm -rf node_modules/.cache
+          rm -rf *.log
           npm prune --production
-          # Restore the Prisma client
-          mkdir -p node_modules/.prisma
-          cp -r ./prisma-client-backup/* node_modules/.prisma/
-          # Verify it's still there
-          ls -la node_modules/.prisma/client/ | head -5
-          echo "✅ Production dependencies cleaned up, Prisma client preserved"
-
-      - name: Final verification
-        run: |
-          echo "🔍 Final verification of deployment package..."
-          echo "Node modules size:"
-          du -sh node_modules/
-          echo "Prisma client status:"
+          
+          # Final verification
           if [ -f "node_modules/.prisma/client/index.js" ]; then
-            echo "✅ Prisma client index.js exists"
+            echo "✅ Prisma client preserved in deployment package"
           else
-            echo "❌ Prisma client index.js missing!"
+            echo "❌ Prisma client lost during packaging!"
             exit 1
           fi
 
@@ -100,13 +90,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: |
-            .
-            !.git
-            !.github
-            !prisma-client-backup
-            !*.log
-            !npm-debug.log*
+          path: .
 
   deploy:
     permissions:
@@ -123,14 +107,17 @@ jobs:
         with:
           name: node-app
 
-      - name: Verify deployment package
+      - name: Final deployment verification
         run: |
-          echo "📦 Verifying deployment package..."
-          if [ -d "node_modules/.prisma/client" ]; then
-            echo "✅ Prisma client found in deployment package"
+          echo "📋 Deployment package contents:"
+          ls -la
+          echo "🔍 Checking Prisma client in deployment..."
+          if [ -f "node_modules/.prisma/client/index.js" ]; then
+            echo "✅ Prisma client ready for deployment"
           else
-            echo "❌ Prisma client missing in deployment package!"
-            find . -name "*prisma*" -type d
+            echo "❌ Critical: Prisma client missing in deployment package!"
+            find . -name "*prisma*" -type f 2>/dev/null | head -10
+            exit 1
           fi
 
       - name: "Deploy to Azure WebApp"

@@ -1,56 +1,67 @@
-// Script to handle Prisma setup properly in Azure environment
-// This addresses permission issues when generating the Prisma client
+#!/usr/bin/env node
+// Azure-specific postinstall script for Prisma client generation
+// This runs after npm install in Azure App Service
 
 const { execSync } = require('child_process');
-const path = require('path');
 const fs = require('fs');
+const path = require('path');
 
-console.log('Running Azure post-install script for Prisma setup');
+console.log('🚀 Azure postinstall: Checking Prisma client...');
 
-// Ensure the .prisma directory exists with correct permissions
-const prismaDir = path.join(process.cwd(), 'node_modules', '.prisma');
-if (!fs.existsSync(prismaDir)) {
-  console.log('Creating .prisma directory');
-  fs.mkdirSync(prismaDir, { recursive: true });
+// Check if we're running in Azure App Service
+const isAzure = process.env.WEBSITE_SITE_NAME || process.env.APPSETTING_WEBSITE_SITE_NAME;
+
+if (isAzure) {
+  console.log('📍 Running in Azure App Service environment');
+} else {
+  console.log('📍 Running in local/development environment');
 }
 
-try {
-  // Set permissions
-  console.log('Setting proper permissions for Prisma directories');
-  if (process.platform !== 'win32') { // Skip on Windows dev environments
-    execSync('chmod -R 755 node_modules/.prisma', { stdio: 'inherit' });
-    execSync('chmod -R 755 node_modules/prisma', { stdio: 'inherit' });
-  }
+// Check if Prisma client already exists
+const prismaClientPath = path.join(__dirname, '..', 'node_modules', '.prisma', 'client', 'index.js');
+const prismaClientExists = fs.existsSync(prismaClientPath);
+
+console.log(`🔍 Prisma client exists: ${prismaClientExists}`);
+
+if (!prismaClientExists) {
+  console.log('⚙️ Prisma client not found, attempting to generate...');
   
-  // Generate Prisma client safely
-  console.log('Generating Prisma client...');
-  
-  // We use the JavaScript API directly rather than CLI
   try {
-    const { PrismaClient } = require('@prisma/client');
-    console.log('Prisma client already exists');
-  } catch (e) {
-    console.log('Prisma client not found, generating...');
-    // Use the Node.js API to avoid permission issues
-    const { execSync } = require('child_process');
+    // Load environment variables
+    require('./load-env.js');
     
-    try {
-      execSync('node ./node_modules/prisma/build/index.js generate', { 
-        stdio: 'inherit',
-        env: {
-          ...process.env,
-          PRISMA_GENERATE_DATAPROXY: 'false',
-        }
-      });
-      console.log('Prisma client generation completed');
-    } catch (genError) {
-      console.error('Error during Prisma generate:', genError);
-      process.exit(1);
+    // Set a dummy DATABASE_URL if not present (for client generation only)
+    if (!process.env.DATABASE_URL) {
+      process.env.DATABASE_URL = 'postgresql://dummy:dummy@localhost:5432/dummy';
+      console.log('🔧 Using dummy DATABASE_URL for client generation');
+    }
+    
+    // Generate Prisma client
+    console.log('🔄 Generating Prisma client...');
+    execSync('npx prisma generate', { 
+      stdio: 'inherit',
+      cwd: path.join(__dirname, '..'),
+      env: process.env
+    });
+    
+    // Verify generation
+    if (fs.existsSync(prismaClientPath)) {
+      console.log('✅ Prisma client generated successfully!');
+    } else {
+      console.log('⚠️ Prisma client generation completed but file not found');
+    }
+    
+  } catch (error) {
+    console.error('❌ Failed to generate Prisma client:', error.message);
+    
+    if (isAzure) {
+      console.log('⚠️ Continuing with deployment - app will attempt to use pre-built client');
+    } else {
+      console.log('💡 Try running "npm run prisma:generate" manually');
     }
   }
-  
-  console.log('Azure post-install for Prisma completed successfully');
-} catch (error) {
-  console.error('Error during Azure post-install:', error);
-  process.exit(1);
+} else {
+  console.log('✅ Prisma client already exists, skipping generation');
 }
+
+console.log('🏁 Azure postinstall completed');

@@ -35,7 +35,7 @@
     "seed": "node --loader ts-node/esm prisma/seed.ts"
   },
   "scripts": {
-    "postinstall": "node prisma/load-env.js && npm run prisma:generate",
+    "postinstall": "node prisma/azure-postinstall.js",
     "dev": "nodemon src/index.js",
     "start": "node index.js",
     "build": "npx prisma generate",
