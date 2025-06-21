@@ -40,49 +40,84 @@ jobs:
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
 
       - name: Install dependencies
-        run: npm ci --include=dev
+        run: npm ci
 
-      - name: Generate Prisma Client (force generation)
+      - name: Force generate Prisma Client
         run: |
-          echo "🔧 Generating Prisma client..."
-          # Set a dummy DATABASE_URL for generation (Prisma needs a valid format)
-          export DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
-          npx prisma generate --schema=./prisma/schema.prisma
-          echo "✅ Prisma client generated"
+          echo "🔧 Forcing Prisma client generation..."
+          # Create .env file with dummy DATABASE_URL for generation
+          echo "DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy" > .env
+          
+          # Generate Prisma client
+          npx prisma generate
+          
+          echo "✅ Prisma client generation completed"
+        env:
+          # Override with dummy URL to avoid connection issues during generation
+          DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
         
-      - name: Verify Prisma Client exists
+      - name: Verify Prisma Client generation
         run: |
-          echo "🔍 Checking for Prisma client..."
-          if [ -d "node_modules/.prisma/client" ]; then
-            echo "✅ Prisma client directory found"
-            ls -la node_modules/.prisma/client/ | head -10
-            if [ -f "node_modules/.prisma/client/index.js" ]; then
-              echo "✅ Prisma client index.js exists"
-            else
-              echo "❌ Prisma client index.js missing!"
-              exit 1
-            fi
+          echo "🔍 Detailed verification of Prisma client..."
+          
+          # Check if .prisma directory exists
+          if [ -d "node_modules/.prisma" ]; then
+            echo "✅ .prisma directory found"
+            ls -la node_modules/.prisma/
           else
-            echo "❌ Prisma client directory not found!"
-            find . -name ".prisma" -type d 2>/dev/null || echo "No .prisma directory found anywhere"
+            echo "❌ .prisma directory missing!"
+            echo "Searching for any prisma-related directories..."
+            find node_modules -name "*prisma*" -type d | head -10
+            exit 1
+          fi
+          
+          # Check if client directory exists
+          if [ -d "node_modules/.prisma/client" ]; then
+            echo "✅ client directory found"
+            ls -la node_modules/.prisma/client/ | head -15
+          else
+            echo "❌ client directory missing!"
+            exit 1
+          fi
+          
+          # Check for specific files
+          if [ -f "node_modules/.prisma/client/index.js" ]; then
+            echo "✅ index.js exists"
+            head -5 node_modules/.prisma/client/index.js
+          else
+            echo "❌ index.js missing!"
+            exit 1
+          fi
+          
+          if [ -f "node_modules/.prisma/client/default.js" ]; then
+            echo "✅ default.js exists"
+          else
+            echo "❌ default.js missing!"
             exit 1
           fi
 
-      - name: Create deployment package
+      - name: Prepare for production
         run: |
-          echo "📦 Creating deployment package..."
-          # Remove unnecessary files but keep Prisma client
-          rm -rf .git
-          rm -rf .github
-          rm -rf node_modules/.cache
-          rm -rf *.log
+          echo "📦 Preparing production build..."
+          
+          # Before pruning, backup the Prisma client
+          echo "Backing up Prisma client..."
+          cp -r node_modules/.prisma ./prisma-backup
+          
+          # Remove dev dependencies
           npm prune --production
           
-          # Final verification
+          # Restore Prisma client after pruning
+          echo "Restoring Prisma client..."
+          rm -rf node_modules/.prisma
+          cp -r ./prisma-backup node_modules/.prisma
+          rm -rf ./prisma-backup
+          
+          # Verify restoration
           if [ -f "node_modules/.prisma/client/index.js" ]; then
-            echo "✅ Prisma client preserved in deployment package"
+            echo "✅ Prisma client successfully restored after production build"
           else
-            echo "❌ Prisma client lost during packaging!"
+            echo "❌ Failed to restore Prisma client!"
             exit 1
           fi
 
@@ -111,11 +146,28 @@ jobs:
         run: |
           echo "📋 Deployment package contents:"
           ls -la
-          echo "🔍 Checking Prisma client in deployment..."
+          echo ""
+          echo "🔍 Checking Prisma client in deployment package..."
+          
+          if [ -d "node_modules/.prisma" ]; then
+            echo "✅ .prisma directory exists"
+            ls -la node_modules/.prisma/
+          else
+            echo "❌ .prisma directory missing!"
+          fi
+          
+          if [ -d "node_modules/.prisma/client" ]; then
+            echo "✅ client directory exists"
+            ls -la node_modules/.prisma/client/ | head -10
+          else
+            echo "❌ client directory missing!"
+          fi
+          
           if [ -f "node_modules/.prisma/client/index.js" ]; then
             echo "✅ Prisma client ready for deployment"
           else
-            echo "❌ Critical: Prisma client missing in deployment package!"
+            echo "❌ Critical: Prisma client index.js missing!"
+            echo "Searching for any prisma files..."
             find . -name "*prisma*" -type f 2>/dev/null | head -10
             exit 1
           fi
