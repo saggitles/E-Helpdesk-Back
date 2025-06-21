@@ -34,73 +34,112 @@ jobs:
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install ALL dependencies (no pruning until end)
+        run: npm install
 
-      - name: Generate Prisma Client with all binary targets
+      - name: Debug environment before Prisma generation
         run: |
-          echo "🔧 Generating Prisma client with Azure-compatible binaries..."
-          # Set environment for generation
+          echo "🔍 Debug environment before Prisma generation..."
+          echo "Node version: $(node --version)"
+          echo "NPM version: $(npm --version)" 
+          echo "Current directory: $(pwd)"
+          echo "Prisma version: $(npx prisma --version)"
+          echo ""
+          echo "Checking Prisma schema:"
+          ls -la prisma/schema.prisma
+          echo ""
+          echo "Current node_modules structure:"
+          ls -la node_modules/ | grep -i prisma || echo "No prisma directories found yet"
+
+      - name: Force Prisma Client Generation (multiple attempts)
+        run: |
+          echo "🔧 Force generating Prisma client with multiple methods..."
+          
+          # Set dummy DATABASE_URL for generation
           export DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
-          export NODE_ENV=production
           
-          # Generate Prisma client
-          npx prisma generate
+          # Method 1: Direct generation
+          echo "=== Method 1: Direct generation ==="
+          npx prisma generate || echo "Method 1 failed"
           
-          echo "✅ Prisma client generation completed"
-
-      - name: Verify Prisma Client generation
-        run: |
-          echo "🔍 Verifying Prisma client generation..."
-          
-          # Check for generated client
+          # Check if it worked
           if [ -d "node_modules/.prisma/client" ]; then
-            echo "✅ .prisma/client directory found"
-            ls -la node_modules/.prisma/client/ | head -10
+            echo "✅ Method 1 succeeded!"
+            ls -la node_modules/.prisma/client/ | head -5
+          else
+            echo "❌ Method 1 failed, trying method 2..."
             
-            # Check for essential files
-            if [ -f "node_modules/.prisma/client/index.js" ]; then
-              echo "✅ index.js exists"
+            # Method 2: Generate with schema path
+            echo "=== Method 2: Generate with explicit schema ==="
+            npx prisma generate --schema=./prisma/schema.prisma || echo "Method 2 failed"
+            
+            if [ -d "node_modules/.prisma/client" ]; then
+              echo "✅ Method 2 succeeded!"
             else
-              echo "❌ index.js missing!"
+              echo "❌ Method 2 failed, trying method 3..."
+              
+              # Method 3: Use npm script
+              echo "=== Method 3: Using npm script ==="
+              npm run prisma:generate || echo "Method 3 failed"
+              
+              if [ -d "node_modules/.prisma/client" ]; then
+                echo "✅ Method 3 succeeded!"
+              else
+                echo "❌ All methods failed!"
+                echo "Checking what exists:"
+                find node_modules -name "*prisma*" -type d
+                exit 1
+              fi
+            fi
+          fi
+
+      - name: Comprehensive verification after generation
+        run: |
+          echo "🔍 Comprehensive verification after generation..."
+          
+          # Check .prisma directory
+          if [ -d "node_modules/.prisma" ]; then
+            echo "✅ .prisma directory exists"
+            echo "Contents of .prisma:"
+            ls -laR node_modules/.prisma/
+          else
+            echo "❌ .prisma directory missing!"
+            exit 1
+          fi
+          
+          # Check specific files
+          REQUIRED_FILES=(
+            "node_modules/.prisma/client/index.js"
+            "node_modules/.prisma/client/default.js"
+          )
+          
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [ -f "$file" ]; then
+              echo "✅ $file exists ($(ls -lh "$file" | awk '{print $5}'))"
+            else
+              echo "❌ $file missing!"
               exit 1
             fi
-            
-            # Check for binary files (engines)
-            echo "Binary files in client:"
-            find node_modules/.prisma/client -name "*.node" -o -name "*engine*" | head -5
-            
-          else
-            echo "❌ .prisma/client directory not found!"
-            echo "Checking @prisma/client:"
-            ls -la node_modules/@prisma/client/ || echo "No @prisma/client found"
-            exit 1
-          fi
+          done
+          
+          # Show a sample of the generated content
+          echo "Sample from index.js:"
+          head -3 node_modules/.prisma/client/index.js
 
-      - name: Create production build
+      - name: Skip npm prune (keep all dependencies for now)
         run: |
-          echo "📦 Creating production build..."
+          echo "📦 Skipping npm prune to preserve Prisma client..."
+          echo "Node modules size: $(du -sh node_modules/)"
           
-          # Backup Prisma client before pruning
-          cp -r node_modules/.prisma ./prisma-backup
-          
-          # Remove dev dependencies
-          npm prune --production
-          
-          # Restore Prisma client
-          mkdir -p node_modules/.prisma
-          cp -r ./prisma-backup/* node_modules/.prisma/
-          rm -rf ./prisma-backup
-          
-          # Verify restoration
+          # Final verification before upload
           if [ -f "node_modules/.prisma/client/index.js" ]; then
-            echo "✅ Prisma client preserved in production build"
+            echo "✅ Prisma client ready for upload"
           else
-            echo "❌ Prisma client lost during production build!"
+            echo "❌ Prisma client lost!"
             exit 1
           fi
 
-      - name: Upload artifact
+      - name: Upload artifact (with all dependencies)
         uses: actions/upload-artifact@v4
         with:
           name: node-app
@@ -119,15 +158,42 @@ jobs:
         with:
           name: node-app
 
-      - name: Pre-deployment verification
+      - name: Thorough pre-deployment verification
         run: |
-          echo "🔍 Pre-deployment verification..."
+          echo "🔍 Thorough pre-deployment verification..."
+          echo "Package contents:"
+          ls -la
+          echo ""
           
-          if [ -f "node_modules/.prisma/client/index.js" ]; then
-            echo "✅ Prisma client ready for Azure deployment"
-            echo "Client file size: $(ls -lh node_modules/.prisma/client/index.js | awk '{print $5}')"
+          echo "Node modules structure:"
+          ls -la node_modules/ | grep -i prisma || echo "No prisma directories visible"
+          echo ""
+          
+          # Check for .prisma directory
+          if [ -d "node_modules/.prisma" ]; then
+            echo "✅ .prisma directory exists in deployment"
+            echo "Contents:"
+            ls -la node_modules/.prisma/
+            
+            if [ -d "node_modules/.prisma/client" ]; then
+              echo "✅ client directory exists"
+              echo "Client files:"
+              ls -la node_modules/.prisma/client/ | head -10
+              
+              if [ -f "node_modules/.prisma/client/index.js" ]; then
+                echo "✅ index.js ready for deployment"
+                echo "File size: $(ls -lh node_modules/.prisma/client/index.js | awk '{print $5}')"
+              else
+                echo "❌ index.js missing in deployment!"
+                exit 1
+              fi
+            else
+              echo "❌ client directory missing in deployment!"
+              exit 1
+            fi
           else
-            echo "❌ Prisma client missing in deployment package!"
+            echo "❌ .prisma directory missing in deployment!"
+            echo "Available prisma-related files:"
             find . -name "*prisma*" -type f | head -10
             exit 1
           fi
