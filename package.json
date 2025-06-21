@@ -37,8 +37,9 @@
   "scripts": {
     "postinstall": "node prisma/load-env.js && npm run prisma:generate",
     "dev": "nodemon src/index.js",
-    "start": "node index.js",
+    "start": "npm run ensure-prisma && node index.js",
     "build": "npx prisma generate",
+    "ensure-prisma": "node -e \"try { require('.prisma/client') || require('@prisma/client'); console.log('✅ Prisma client available'); } catch(e) { console.log('⚠️ Generating Prisma client...'); require('child_process').execSync('npx prisma generate', {stdio: 'inherit'}); }\"",
     "migrate:deploy": "npx prisma migrate deploy || echo 'Migration failed, continuing with app startup'",
     "prisma:generate": "npx prisma generate",
     "prisma:migrate": "prisma migrate deploy",
