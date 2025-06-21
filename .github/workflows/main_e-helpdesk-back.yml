@@ -32,7 +32,7 @@ jobs:
       - name: Install ALL dependencies (including dev)
         run: npm install
 
-      - name: Generate Prisma Client with verbose output
+      - name: Generate Prisma Client with proper flags
         run: |
           echo "🔧 Generating Prisma client..."
           echo "Current directory: $(pwd)"
@@ -42,8 +42,8 @@ jobs:
           # Set dummy DATABASE_URL for client generation
           export DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
           
-          # Generate with verbose output
-          npx prisma generate --schema=./prisma/schema.prisma --verbose
+          # Generate without verbose flag (not supported)
+          npx prisma generate --schema=./prisma/schema.prisma
           
           echo "✅ Generation command completed"
 
