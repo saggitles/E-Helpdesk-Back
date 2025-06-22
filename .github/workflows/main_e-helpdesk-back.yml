@@ -40,22 +40,22 @@ jobs:
       - name: Generate Prisma Client with explicit debugging
         run: |
           echo "🔧 Starting Prisma client generation with explicit debugging..."
-          
+
           # Set dummy DATABASE_URL for generation
           export DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
-          
+
           echo "Environment check:"
           echo "DATABASE_URL=$DATABASE_URL"
           echo "Node version: $(node --version)"
           echo "Prisma version:"
           npx prisma --version
-          
+
           echo "Schema validation:"
           npx prisma validate --schema=./prisma/schema.prisma
-          
+
           echo "Starting generation..."
           npx prisma generate --schema=./prisma/schema.prisma 2>&1 | tee prisma-generate.log
-          
+
           echo "Generation exit code: $?"
           echo "Generation log:"
           cat prisma-generate.log || echo "No log file created"
@@ -63,7 +63,7 @@ jobs:
       - name: Check generation results
         run: |
           echo "🔍 Checking generation results..."
-          
+
           echo "Checking for .prisma directory:"
           if [ -d "node_modules/.prisma" ]; then
             echo "✅ .prisma directory found!"
@@ -87,7 +87,7 @@ jobs:
               echo "❌ No @prisma/client directory found either"
             fi
           fi
-          
+
           echo "Final check for required files:"
           if [ -f "node_modules/.prisma/client/index.js" ]; then
             echo "✅ index.js found at node_modules/.prisma/client/index.js"
@@ -106,11 +106,11 @@ jobs:
         run: |
           echo "📦 Preparing deployment package..."
           echo "The azure-startup.js script will handle Prisma client generation at runtime if needed"
-          
+
           # Clean up unnecessary files but keep everything Prisma-related
           rm -rf node_modules/.cache 2>/dev/null || true
           rm -f prisma-generate.log 2>/dev/null || true
-          
+
           echo "Deployment package ready with runtime fallback"
 
       - name: Upload artifact
@@ -135,7 +135,7 @@ jobs:
       - name: Pre-deployment check (non-blocking)
         run: |
           echo "🔍 Pre-deployment check..."
-          
+
           if [ -f "node_modules/.prisma/client/index.js" ]; then
             echo "✅ Prisma client found - will use pre-built client"
           elif [ -f "node_modules/@prisma/client/index.js" ]; then
@@ -144,7 +144,7 @@ jobs:
             echo "⚠️ Prisma client not found in build - will rely on runtime generation"
             echo "The azure-startup.js script will handle this automatically"
           fi
-          
+
           echo "Azure startup script location:"
           ls -la prisma/azure-startup.js
 
