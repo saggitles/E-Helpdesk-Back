@@ -71,8 +71,8 @@ async function startApplication() {
     console.log('🚀 Starting application...');
     
     try {
-      // Start the main application - FIXED PATH
-      const app = spawn('node', ['src/index.js'], {  // Changed from 'index.js' to 'src/index.js'
+      // Start the main application - FIXED: Use correct entry point
+      const app = spawn('node', ['index.js'], {  // Changed from 'src/index.js' to 'index.js'
         stdio: 'inherit',
         cwd: path.join(__dirname, '..'),
         env: process.env
