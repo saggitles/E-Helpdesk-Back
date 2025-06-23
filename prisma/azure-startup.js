@@ -68,31 +68,31 @@ async function ensurePrismaClient() {
 }
 
 async function startApplication() {
-  console.log('🚀 Starting application...');
-  
-  try {
-    // Start the main application
-    const app = spawn('node', ['index.js'], {
-      stdio: 'inherit',
-      cwd: path.join(__dirname, '..'),
-      env: process.env
-    });
+    console.log('🚀 Starting application...');
     
-    app.on('close', (code) => {
-      console.log(`Application exited with code ${code}`);
-      process.exit(code);
-    });
-    
-    app.on('error', (error) => {
-      console.error('Application error:', error);
+    try {
+      // Start the main application - FIXED PATH
+      const app = spawn('node', ['src/index.js'], {  // Changed from 'index.js' to 'src/index.js'
+        stdio: 'inherit',
+        cwd: path.join(__dirname, '..'),
+        env: process.env
+      });
+      
+      app.on('close', (code) => {
+        console.log(`Application exited with code ${code}`);
+        process.exit(code);
+      });
+      
+      app.on('error', (error) => {
+        console.error('Application error:', error);
+        process.exit(1);
+      });
+      
+    } catch (error) {
+      console.error('Failed to start application:', error);
       process.exit(1);
-    });
-    
-  } catch (error) {
-    console.error('Failed to start application:', error);
-    process.exit(1);
+    }
   }
-}
 
 // Main execution
 async function main() {

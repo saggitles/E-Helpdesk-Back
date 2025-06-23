@@ -37,81 +37,8 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Generate Prisma Client with explicit debugging
-        run: |
-          echo "🔧 Starting Prisma client generation with explicit debugging..."
-
-          # Set dummy DATABASE_URL for generation
-          export DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
-
-          echo "Environment check:"
-          echo "DATABASE_URL=$DATABASE_URL"
-          echo "Node version: $(node --version)"
-          echo "Prisma version:"
-          npx prisma --version
-
-          echo "Schema validation:"
-          npx prisma validate --schema=./prisma/schema.prisma
-
-          echo "Starting generation..."
-          npx prisma generate --schema=./prisma/schema.prisma 2>&1 | tee prisma-generate.log
-
-          echo "Generation exit code: $?"
-          echo "Generation log:"
-          cat prisma-generate.log || echo "No log file created"
-
-      - name: Check generation results
-        run: |
-          echo "🔍 Checking generation results..."
-
-          echo "Checking for .prisma directory:"
-          if [ -d "node_modules/.prisma" ]; then
-            echo "✅ .prisma directory found!"
-            echo "Contents:"
-            ls -laR node_modules/.prisma/ || echo "Failed to list contents"
-          else
-            echo "❌ .prisma directory not found"
-            echo "Checking @prisma/client directory:"
-            if [ -d "node_modules/@prisma/client" ]; then
-              echo "Found @prisma/client directory:"
-              ls -la node_modules/@prisma/client/ || echo "Failed to list @prisma/client"
-              
-              # Check if client was generated in @prisma/client instead
-              if [ -f "node_modules/@prisma/client/index.js" ]; then
-                echo "✅ Found client in @prisma/client, creating symlink..."
-                mkdir -p node_modules/.prisma/client
-                cp -r node_modules/@prisma/client/* node_modules/.prisma/client/
-                echo "Symlink created successfully"
-              fi
-            else
-              echo "❌ No @prisma/client directory found either"
-            fi
-          fi
-
-          echo "Final check for required files:"
-          if [ -f "node_modules/.prisma/client/index.js" ]; then
-            echo "✅ index.js found at node_modules/.prisma/client/index.js"
-          elif [ -f "node_modules/@prisma/client/index.js" ]; then
-            echo "✅ index.js found at node_modules/@prisma/client/index.js"
-            echo "Creating compatibility structure..."
-            mkdir -p node_modules/.prisma/client
-            cp -r node_modules/@prisma/client/* node_modules/.prisma/client/
-          else
-            echo "❌ No Prisma client found anywhere!"
-            echo "Available Prisma files:"
-            find node_modules -name "*prisma*" -type f | head -10
-          fi
-
-      - name: Deploy anyway with runtime generation fallback
-        run: |
-          echo "📦 Preparing deployment package..."
-          echo "The azure-startup.js script will handle Prisma client generation at runtime if needed"
-
-          # Clean up unnecessary files but keep everything Prisma-related
-          rm -rf node_modules/.cache 2>/dev/null || true
-          rm -f prisma-generate.log 2>/dev/null || true
-
-          echo "Deployment package ready with runtime fallback"
+      - name: Build application
+        run: npm run build
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -131,22 +58,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: node-app
-
-      - name: Pre-deployment check (non-blocking)
-        run: |
-          echo "🔍 Pre-deployment check..."
-
-          if [ -f "node_modules/.prisma/client/index.js" ]; then
-            echo "✅ Prisma client found - will use pre-built client"
-          elif [ -f "node_modules/@prisma/client/index.js" ]; then
-            echo "✅ Prisma client found in @prisma/client - will use pre-built client"
-          else
-            echo "⚠️ Prisma client not found in build - will rely on runtime generation"
-            echo "The azure-startup.js script will handle this automatically"
-          fi
-
-          echo "Azure startup script location:"
-          ls -la prisma/azure-startup.js
 
       - name: Deploy to Azure WebApp
         uses: azure/webapps-deploy@v2
