@@ -1,29 +1,51 @@
-
 const express = require('express');
+const cors = require('cors');
 const app = express();
-const routes = require('./src/routes');
+
+// Construct DATABASE_URL from Azure PostgreSQL environment variables
+if (!process.env.DATABASE_URL && process.env.AZURE_POSTGRESQL_HOST) {
+  const host = process.env.AZURE_POSTGRESQL_HOST;
+  const port = process.env.AZURE_POSTGRESQL_PORT || '5432';
+  const database = process.env.AZURE_POSTGRESQL_DATABASE;
+  const user = process.env.AZURE_POSTGRESQL_USER;
+  const password = process.env.AZURE_POSTGRESQL_PASSWORD;
+  const ssl = process.env.AZURE_POSTGRESQL_SSL === 'true' ? '?sslmode=require' : '';
+  
+  if (host && database && user && password) {
+    process.env.DATABASE_URL = `postgresql://${user}:${password}@${host}:${port}/${database}${ssl}`;
+    console.log('✅ DATABASE_URL constructed from Azure PostgreSQL variables');
+  }
+}
 
 // Get port from environment or use 8080
 const PORT = process.env.PORT || 8080;
 
-console.log('🚀 Starting minimal test app...');
+console.log('🚀 Starting E-Helpdesk Backend...');
 console.log('Environment variables:', {
   NODE_ENV: process.env.NODE_ENV,
   PORT: process.env.PORT,
-  WEBSITES_PORT: process.env.WEBSITES_PORT
+  WEBSITES_PORT: process.env.WEBSITES_PORT,
+  DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT SET',
+  AZURE_POSTGRESQL_HOST: process.env.AZURE_POSTGRESQL_HOST ? 'SET' : 'NOT SET',
+  AZURE_POSTGRESQL_DATABASE: process.env.AZURE_POSTGRESQL_DATABASE ? 'SET' : 'NOT SET',
+  AZURE_POSTGRESQL_USER: process.env.AZURE_POSTGRESQL_USER ? 'SET' : 'NOT SET',
+  AZURE_POSTGRESQL_SSL: process.env.AZURE_POSTGRESQL_SSL
 });
 
 // Basic middleware
-app.use(express.json());
+app.use(cors());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Test routes
+// Health check route (always available)
 app.get('/', (req, res) => {
   console.log('Root route accessed');
   res.json({ 
-    message: 'Minimal test app is working!',
+    message: 'E-Helpdesk Backend is running!',
     timestamp: new Date().toISOString(),
     port: PORT,
-    env: process.env.NODE_ENV || 'development'
+    env: process.env.NODE_ENV || 'development',
+    status: 'healthy'
   });
 });
 
@@ -32,7 +54,8 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    message: 'App is running successfully'
+    message: 'App is running successfully',
+    version: '1.0.0'
   });
 });
 
@@ -51,11 +74,10 @@ app.get('/env', (req, res) => {
   });
 });
 
+// Load routes 
+app.use('/api', require('./src/routes-minimal'));
 
-//API routes
-app.use('/api', routes);
-
-// Error handling
+// Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Global error handler:', err);
   res.status(500).json({ 
@@ -77,9 +99,9 @@ app.use('*', (req, res) => {
 
 // Start server
 const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Minimal test app running on port ${PORT}`);
+  console.log(`✅ E-Helpdesk Backend running on port ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📡 Test URL: http://localhost:${PORT}`);
+  console.log(`📡 Health check: http://localhost:${PORT}/health`);
 });
 
 // Graceful shutdown
@@ -94,7 +116,7 @@ process.on('SIGTERM', () => {
 // Handle errors
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  // Don't exit on unhandled rejections for debugging
+  // Don't exit on unhandled rejections in production
 });
 
 process.on('uncaughtException', (error) => {
@@ -104,6 +126,6 @@ process.on('uncaughtException', (error) => {
   process.exit(1);
 });
 
-console.log('📋 Minimal test app initialization complete');
+console.log('📋 E-Helpdesk Backend initialization complete');
 
 module.exports = app;
