@@ -40,7 +40,9 @@
   "scripts": {
     "postinstall": "node prisma/azure-postinstall.js",
     "dev": "nodemon src/index.js",
-    "start": "node prisma/azure-startup.js",
+    "start": "node prisma/simple-startup.js",
+    "start:original": "node prisma/azure-startup.js",
+    "start:direct": "node index.js",
     "build": "npx prisma generate",
     "migrate:deploy": "npx prisma migrate deploy || echo 'Migration failed, continuing with app startup'",
     "prisma:generate": "npx prisma generate",
