@@ -1,6 +1,7 @@
 
 const express = require('express');
 const app = express();
+const routes = require('./src/routes');
 
 // Get port from environment or use 8080
 const PORT = process.env.PORT || 8080;
@@ -49,6 +50,10 @@ app.get('/env', (req, res) => {
     }
   });
 });
+
+
+//API routes
+app.use('/api', routes);
 
 // Error handling
 app.use((err, req, res, next) => {
