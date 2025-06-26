@@ -11,6 +11,7 @@ const unlinkAsync = promisify(fs.unlink);
 const express = require('express');
 const app = express();
 app.use(express.json());
+const { createFleetIQClient, createSnapshotClient } = require('./config/database.js');
 
 
 const checkPermission = (claims, permission) => {
@@ -1239,13 +1240,7 @@ const { PassThrough } = require('stream');
 // Gmtpid
 exports.fleetiq = async (req, res) => {
   const vehicleIdParam = req.query.vehicleId; 
-  const client = new Client({
-    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
-    port: 5432,
-    database: 'multi',
-    user: 'readonly_user',
-    password: 'StrongPassword123!'
-  });
+  const client = createFleetIQClient();
 
   try {
     await client.connect();
@@ -1492,7 +1487,7 @@ exports.fleetiq = async (req, res) => {
       lockoutStatus = lockoutStatusMap[lockoutCode] || "Lockout";
     }
 
-    return res.json({ cd, GMTP_ID: vehicleIdResult, HireNo: HireNo, Serial: SERIAL_NO, Model: model, IsVOR: IsVOR, FullLockoutEnabled: full_lockout_enabled, FullLockoutEnabled:IdleTimeoutEnabled, IdleTimeoutTimer:IdleTimeoutTimer, IsCanBus:IsCanBus, FSSS_BASE:FSSS_BASE, FSSSMULTI:FSSSMULTI, IMPACT_LOCKOUT:IMPACT_LOCKOUT, impactSetting, supervisors, supervisorsList, PreopChecklists:preops, generalInformationRes, DriverList, supervisorList, idleSetting, checklistSetting, firmwareVersion, surveyTimeout, lastSession, lockoutStatus });
+    return res.json({ cd, GMTP_ID: vehicleIdResult, HireNo: HireNo, Serial: SERIAL_NO, Model: model, IsVOR: IsVOR, FullLockoutEnabled: full_lockout_enabled, FullLockoutEnabled:IdleTimeoutEnabled, IdleTimeoutTimer:IdleTimeoutTimer, IsCanBus:IsCanBus, FSSS_BASE:FSSS_BASE, IMPACT_LOCKOUT:IMPACT_LOCKOUT, impactSetting, supervisors, supervisorsList, PreopChecklists:preops, generalInformationRes, DriverList, supervisorList, idleSetting, checklistSetting, firmwareVersion, surveyTimeout, lastSession, lockoutStatus });
 
   } catch (err) {
     console.error('Error executing query', err);
@@ -1512,13 +1507,7 @@ exports.fleetiqserial = async (req, res) => {
 
   console.log(serialNo + "---" + userName);
 
-  const client = new Client({
-    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
-    port: 5432,
-    database: 'multi',
-    user: 'readonly_user',
-    password: 'StrongPassword123!'
-  });
+  const client = createFleetIQClient();
 
   try {
     await client.connect();
@@ -1639,10 +1628,10 @@ exports.fleetiqserial = async (req, res) => {
     // Impact Setting
 
     const impactSettingQuery = `SELECT 
-                          "FSSS_BASE", 
-                          "IMPACT_LOCKOUT"
-                          FROM "public"."FMS_VEHICLE_MST" 
-                          WHERE "VEHICLE_ID" = $1`;
+                                "FSSS_BASE", 
+                                "IMPACT_LOCKOUT"
+                            FROM "public"."FMS_VEHICLE_MST" 
+                            WHERE "VEHICLE_ID" = $1`;
 
      const impactSetting = await client.query(impactSettingQuery, [vehicleIdParam]);      
      
@@ -1790,17 +1779,15 @@ exports.fleetiqserial = async (req, res) => {
 
 
 
-
-
-    res.status(200).json(vehicles);
-
   } catch (error) {
     console.error('Error executing query', error);
     res.status(500).json({ error: 'Internal Server Error' });
   } finally {
     await client.end();
   }
-};
+
+}
+
 
 
 // Name
@@ -1813,13 +1800,7 @@ exports.fleetiqname = async (req, res) => {
   
   console.log(serialNo + "---" + userName);
 
-  const client = new Client({
-    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
-    port: 5432,
-    database: 'multi',
-    user: 'readonly_user',
-    password: 'StrongPassword123!'
-  });
+  const client = createFleetIQClient();
 
   try {
     await client.connect();
@@ -1940,10 +1921,10 @@ exports.fleetiqname = async (req, res) => {
     // Impact Setting
 
     const impactSettingQuery = `SELECT 
-                          "FSSS_BASE", 
-                          "IMPACT_LOCKOUT"
-                          FROM "public"."FMS_VEHICLE_MST" 
-                          WHERE "VEHICLE_ID" = $1`;
+                                "FSSS_BASE", 
+                                "IMPACT_LOCKOUT"
+                            FROM "public"."FMS_VEHICLE_MST" 
+                            WHERE "VEHICLE_ID" = $1`;
 
      const impactSetting = await client.query(impactSettingQuery, [vehicleIdParam]);      
      
@@ -2032,7 +2013,7 @@ exports.fleetiqname = async (req, res) => {
     let checklistSetting = [];
     if (vehicleData) {
       const { VEHICLE_TYPE_CD, USER_CD, LOC_CD, DEPT_CD } = vehicleData;
-      const checklistQuery2 = `
+           const checklistQuery2 = `
         SELECT "CHK_CD", "VEH_TYP_CD", "QUESTION", "ANS_TYP", "EXP_ANS", "CRITICAL_ANS", "EXCLUDE_RANDOM"
         FROM "public"."FMS_OPCHK_QUEST_MST"
         WHERE "VEH_TYP_CD" = $1 AND "USER_CD" = $2 AND "LOC_CD" = $3 AND "DEPT_CD" = $4
@@ -2126,13 +2107,7 @@ exports.fleetfocus = async (req, res) => {
 
 // All dealers
 exports.getAllDealers = async (req, res) => {
-  const client = new Client({
-    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
-    port: 5432,
-    database: 'multi',
-    user: 'readonly_user',
-    password: 'StrongPassword123!'
-  });
+  const client = createFleetIQClient();
 
   try {
     await client.connect();
@@ -2154,13 +2129,7 @@ exports.getAllDealers = async (req, res) => {
 exports.getCompanyFromDealer = async (req, res) => {
   const dealerId = req.params.dealer_id;
 
-  const client = new Client({
-    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
-    port: 5432,
-    database: 'multi',
-    user: 'readonly_user',
-    password: 'StrongPassword123!'
-  });
+  const client = createFleetIQClient();
 
   try {
     await client.connect();
@@ -2430,6 +2399,7 @@ exports.getTicketsByLocation = async (req, res) => {
   try {
     const { site_id } = req.query;
 
+    // Check if site_id is provided
     if (!site_id) {
       return res.status(400).json({ 
         message: 'Missing site_id parameter' 
@@ -2560,13 +2530,7 @@ exports.checkDatabaseHealth = async (req, res) => {
   }
 
   // Check FleetIQ database health
-  const fleetiqClient = new Client({
-    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
-    port: 5432,
-    database: 'multi',
-    user: 'readonly_user',
-    password: 'StrongPassword123!'
-  });
+  const fleetiqClient = createFleetIQClient();
 
   try {
     await fleetiqClient.connect();
@@ -2588,13 +2552,7 @@ exports.checkDatabaseHealth = async (req, res) => {
   }
 
   // Check Snapshot database health (ngrok PostgreSQL)
-  const snapshotClient = new Client({
-    host: '4.tcp.ngrok.io',
-    port: 13730,
-    database: 'E-helpdesk',
-    user: 'postgres',
-    password: 'admin'
-  });
+  const snapshotClient = createSnapshotClient();
 
   try {
     await snapshotClient.connect();

@@ -75,7 +75,7 @@ app.get('/env', (req, res) => {
 });
 
 // Load routes 
-app.use('/api', require('./src/routes-minimal'));
+app.use('/api', require('./src/routes'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {

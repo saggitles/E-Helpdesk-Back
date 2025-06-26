@@ -13,7 +13,7 @@ const express = require('express');
 const app = express();
 app.use(express.json());
 const vehicleServices = require('../services/')
-const { createFleetIQClient, createSnapshotClient } = require('../config/database');
+const { createFleetIQClient, createSnapshotClient } = require('../../config/database.js');
 const NodeCache = require('node-cache');
 const { Console } = require('console');
 const vehicleCache = new NodeCache({ stdTTL: 300, checkperiod: 60 }); // 5 minute TTL
