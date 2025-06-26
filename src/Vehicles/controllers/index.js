@@ -13,7 +13,7 @@ const express = require('express');
 const app = express();
 app.use(express.json());
 const vehicleServices = require('../services/')
-const { Client } = require('pg');
+const { createFleetIQClient, createSnapshotClient } = require('../config/database');
 const NodeCache = require('node-cache');
 const { Console } = require('console');
 const vehicleCache = new NodeCache({ stdTTL: 300, checkperiod: 60 }); // 5 minute TTL
@@ -21,13 +21,7 @@ const vehicleCache = new NodeCache({ stdTTL: 300, checkperiod: 60 }); // 5 minut
 
 exports.getCustomers = async (req, res) => {
     console.log('Fetching customers...');
-    const client = new Client({
-      host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
-      port: 5432,
-      database: 'multi',
-      user: 'readonly_user',
-      password: 'StrongPassword123!'
-    });
+    const client = createFleetIQClient();
   
     try {
       await client.connect(); // Establish connection
@@ -70,13 +64,7 @@ exports.getCustomers = async (req, res) => {
     }
   
     try {
-      const client = new Client({
-        host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
-        port: 5432,
-        database: 'multi',
-        user: 'readonly_user',
-        password: 'StrongPassword123!'
-      });
+      const client = createFleetIQClient();
   
       await client.connect();
       
@@ -109,13 +97,7 @@ exports.getCustomers = async (req, res) => {
       return res.status(400).json({ error: "Customer or GMPT Code is required" });
     }
   
-    const client = new Client({
-      host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
-      port: 5432,
-      database: "multi",
-      user: 'readonly_user',
-      password: "StrongPassword123!",
-    });
+    const client = createFleetIQClient();
   
     try {
       await client.connect();
@@ -154,7 +136,7 @@ exports.getCustomers = async (req, res) => {
   
       // Fetch basic vehicle info
       const vehicleInfo = await fetchVehicleInfo(client, vehicleCDs);
-  
+
       
       // Immediately return basic vehicle info
       const basicData = vehicleInfo.map(vehicle => ({
@@ -178,13 +160,7 @@ exports.getCustomers = async (req, res) => {
       return res.status(400).json({ error: "Valid vehicle IDs array is required" });
     }
   
-    const client = new Client({
-      host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
-      port: 5432,
-      database: "multi",
-      user: 'readonly_user',
-      password: "StrongPassword123!",
-    });
+    const client = createFleetIQClient();
   
     try {
       await client.connect();
@@ -260,13 +236,7 @@ WHERE fvm."VEHICLE_CD" = $1;
       return res.status(400).json({ error: "Valid vehicle IDs array is required" });
     }
   
-    const client = new Client({
-      host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
-      port: 5432,
-      database: "multi",
-      user: 'readonly_user',
-      password: "StrongPassword123!",
-    });
+    const client = createFleetIQClient();
   
     try {
       await client.connect();
@@ -322,13 +292,7 @@ WHERE fvm."VEHICLE_CD" = $1;
       return res.status(400).json({ error: "Valid vehicle IDs array is required" });
     }
   
-    const client = new Client({
-      host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
-      port: 5432,
-      database: "multi",
-      user: 'readonly_user',
-      password: "StrongPassword123!",
-    });
+    const client = createFleetIQClient();
   
     try {
       await client.connect();
@@ -390,13 +354,7 @@ WHERE fvm."VEHICLE_CD" = $1;
       return res.status(400).json({ error: "Valid vehicle IDs array is required" });
     }
   
-    const client = new Client({
-      host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
-      port: 5432,
-      database: "multi",
-      user: 'readonly_user',
-      password: "StrongPassword123!",
-    });
+    const client = createFleetIQClient();
   
     try {
       await client.connect();
@@ -423,13 +381,7 @@ WHERE fvm."VEHICLE_CD" = $1;
       return res.status(400).json({ error: "Valid vehicle IDs array is required" });
     }
   
-    const client = new Client({
-      host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
-      port: 5432,
-      database: "multi",
-      user: 'readonly_user',
-      password: "StrongPassword123!",
-    });
+    const client = createFleetIQClient();
   
     try {
       await client.connect();
@@ -545,13 +497,7 @@ exports.getLastDriverLogins = async (req, res) => {
     return res.status(400).json({ error: "Valid vehicle IDs array is required" });
   }
 
-  const client = new Client({
-    host: "db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com",
-    port: 5432,
-    database: "multi",
-    user: 'readonly_user',
-    password: "StrongPassword123!",
-  });
+  const client = createFleetIQClient();
 
   try {
     await client.connect();
@@ -1020,7 +966,7 @@ const dbConfig = {
   };
   
   exports.getAvailableDates = async (req, res) => {
-    const client = new Client(dbConfig);
+    const client = createSnapshotClient();
   
     try {
       await client.connect();
@@ -1050,7 +996,7 @@ const dbConfig = {
   
   exports.getAvailableTimes = async (req, res) => {
     const { date } = req.query;
-    const client = new Client(dbConfig);
+    const client = createSnapshotClient();
   
     try {
       await client.connect();
@@ -1107,7 +1053,7 @@ const dbConfig = {
     const formattedDate1 = format(new Date(date1), 'yyyy-MM-dd');
     const formattedDate2 = format(new Date(date2), 'yyyy-MM-dd');
   
-    const client = new Client(dbConfig);
+    const client = createSnapshotClient();
     try {
       await client.connect();
   
