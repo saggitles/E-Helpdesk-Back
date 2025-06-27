@@ -31,12 +31,15 @@ if (!checkPrismaClient()) {
   console.log('⚙️ Prisma client not found, generating now...');
   
   try {
-    // Load environment variables for client generation
-    require('./load-env.js');
+    // For Azure, don't load from load-env.js - use environment variables directly
+    console.log('🌐 Using Azure environment variables directly');
     
-    // Set dummy DATABASE_URL if needed for generation
+    // Set dummy DATABASE_URL if needed for generation (Azure should have real one)
     if (!process.env.DATABASE_URL) {
+      console.log('⚠️ DATABASE_URL not found, using dummy for generation');
       process.env.DATABASE_URL = 'postgresql://dummy:dummy@localhost:5432/dummy';
+    } else {
+      console.log('✅ DATABASE_URL found in environment');
     }
     
     // Generate Prisma client
