@@ -15,6 +15,7 @@ const ticketServices = require('../services/')
 const { dateFormatForDatabaseRequest } = require('../../utils/date');
 const { successfulResponse } = require('../../utils/response-helper');
 const { updateTicket } = require('../../controllers');
+const { createFleetIQClient } = require('../../config/database');
 app.use(express.json());
 
   const checkPermission = (claims, permission) => {
@@ -148,13 +149,19 @@ app.use(express.json());
   exports.getTickets = async (req, res) => {
     try {
       const tickets = await prisma.ticket.findMany({
-        
+        include: {
+          assigned_user: {
+            select: {
+              username: true
+            }
+          }
+        }
       });
   
       const ticketsWithCustomerNames = tickets.map(ticket => ({
         ...ticket,
-        Customer: ticket.Customer?.CustomerName || null,
-        User: ticket.AssignedUser?.Username || null
+        Customer: ticket.customer_name || null,
+        User: ticket.assigned_user?.username || null
       }));
   
       res.json(ticketsWithCustomerNames);
@@ -200,7 +207,7 @@ app.use(express.json());
         'Priority': ticket.priority || '',
         'Customer': ticket.customer_name || '',
         'Site': ticket.site_name || '',
-        'Assigned To': ticket.assigned_user?.Username || '', // Changed to match schema
+        'Assigned To': ticket.assigned_user?.username || '', // Fixed to use lowercase username
         'Description': ticket.description || '',
         'Platform': ticket.platform || '',
         'Contact Name': ticket.contact_name || '',
@@ -280,8 +287,8 @@ app.use(express.json());
 exports.getAttachmentsForTicket = async (req, res) => {
   try {
     const ticketId = parseInt(req.params.id);
-    // Assuming you have a File model in your Prisma schema
-    const attachments = await prisma.File.findMany({
+    // Fixed: Use lowercase 'file' and correct field names
+    const attachments = await prisma.file.findMany({
       where: {
         ticket_id: ticketId,
       },
@@ -343,10 +350,10 @@ exports.uploadFile = async (req, res) => {
 
       // Create a new File entry in the database
       try {
-        await prisma.File.create({
+        await prisma.file.create({
           data: {
             url: azureStorageUrl,
-            TicketID: ticketId,
+            ticket_id: ticketId,
             name: file.name || 'Unnamed File', // Fallback in case file name is missing
           },
         });
@@ -380,11 +387,10 @@ exports.deleteAttachment = async (req, res) => {
       return res.status(400).json({ error: 'Invalid attachmentId' });
     }
 
-    // Assuming you have a File model in your Prisma schema
-    const deletedAttachment = await prisma.File.findUnique({
+    // Fixed: Use correct model and field names to match Prisma schema
+    const deletedAttachment = await prisma.file.findUnique({
       where: {
-        IDFile: attachmentId,
-        TicketID: ticketId,
+        id: attachmentId,
       },
     });
 
@@ -415,10 +421,9 @@ exports.deleteAttachment = async (req, res) => {
         await blockBlobClient.delete();
 
         // Delete the attachment record from your database
-        await prisma.File.delete({
+        await prisma.file.delete({
           where: {
-            IDFile: attachmentId,
-            TicketID: ticketId,
+            id: attachmentId,
           },
         });
 
@@ -440,7 +445,6 @@ exports.deleteAttachment = async (req, res) => {
 };
 
 
-const { Client } = require('pg');
 exports.getGmptCodesBySite = async (req, res) => {
   const { site_id } = req.query;
 
@@ -448,14 +452,7 @@ exports.getGmptCodesBySite = async (req, res) => {
     return res.status(400).json({ error: 'Missing site_id' });
   }
 
-  const fleetiq = new Client({
-    host: 'db-fleetiq-encrypt-01.cmjwsurtk4tn.us-east-1.rds.amazonaws.com',
-    port: 5432,
-    database: 'multi',
-    user: 'readonly_user',
-    password: 'StrongPassword123!'
-  })
-  const client = new Client(fleetiq);
+  const client = createFleetIQClient();
   try {
     await client.connect();
 
@@ -468,7 +465,7 @@ exports.getGmptCodesBySite = async (req, res) => {
       WHERE "R"."LOC_CD" = $1;
     `;
     const result = await client.query(query, [site_id]);
-    const codes = result.rows.map(row => row.VEHICLE_ID); // Make sure column name is lowercase
+    const codes = result.rows.map(row => row.VEHICLE_ID);
     res.json(codes);
   } catch (err) {
     console.error('Error fetching GMPT codes:', err.message);
