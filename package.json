@@ -39,6 +39,7 @@
   },
   "scripts": {
     "postinstall": "node prisma/azure-postinstall.js",
+    "prebuild": "npx prisma generate",
     "dev": "nodemon src/index.js",
     "start": "node prisma/simple-startup.js",
     "start:original": "node prisma/azure-startup.js",

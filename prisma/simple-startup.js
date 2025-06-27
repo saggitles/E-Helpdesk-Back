@@ -1,12 +1,69 @@
-// Simple startup script for testing
+// Simple startup script for Azure with Prisma client generation
 console.log('🚀 Simple Azure Startup: E-Helpdesk Backend');
 console.log('📍 Environment: Azure App Service');
 
-// Start the main application directly
-const { spawn } = require('child_process');
+const { execSync, spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 
-console.log('🚀 Starting application directly...');
+// Function to check if Prisma client exists
+function checkPrismaClient() {
+  const possiblePaths = [
+    path.join(__dirname, '..', 'node_modules', '.prisma', 'client', 'index.js'),
+    path.join(__dirname, '..', '.prisma', 'client', 'index.js'),
+    path.join('/home/site/wwwroot', 'node_modules', '.prisma', 'client', 'index.js'),
+    path.join('/home/site/wwwroot', '.prisma', 'client', 'index.js')
+  ];
+  
+  for (const clientPath of possiblePaths) {
+    if (fs.existsSync(clientPath)) {
+      console.log(`✅ Prisma client found at: ${clientPath}`);
+      return true;
+    }
+  }
+  return false;
+}
+
+// Ensure Prisma client is generated before starting the app
+console.log('🔍 Checking Prisma client...');
+
+if (!checkPrismaClient()) {
+  console.log('⚙️ Prisma client not found, generating now...');
+  
+  try {
+    // Load environment variables for client generation
+    require('./load-env.js');
+    
+    // Set dummy DATABASE_URL if needed for generation
+    if (!process.env.DATABASE_URL) {
+      process.env.DATABASE_URL = 'postgresql://dummy:dummy@localhost:5432/dummy';
+    }
+    
+    // Generate Prisma client
+    console.log('🔄 Generating Prisma client...');
+    execSync('npx prisma generate --schema=./prisma/schema.prisma', { 
+      stdio: 'inherit',
+      cwd: path.join(__dirname, '..'),
+      env: process.env
+    });
+    
+    // Verify generation
+    if (checkPrismaClient()) {
+      console.log('✅ Prisma client generated successfully!');
+    } else {
+      console.log('❌ Prisma client generation failed');
+      console.log('🔄 Attempting to continue anyway...');
+    }
+    
+  } catch (error) {
+    console.error('❌ Failed to generate Prisma client:', error.message);
+    console.log('🔄 Attempting to start application anyway...');
+  }
+} else {
+  console.log('✅ Prisma client already exists');
+}
+
+console.log('🚀 Starting application...');
 
 const app = spawn('node', ['index.js'], {
   stdio: 'inherit',

@@ -17,51 +17,77 @@ if (isAzure) {
   console.log('📍 Running in local/development environment');
 }
 
-// Check if Prisma client already exists
-const prismaClientPath = path.join(__dirname, '..', 'node_modules', '.prisma', 'client', 'index.js');
-const prismaClientExists = fs.existsSync(prismaClientPath);
+// Always generate Prisma client in Azure to ensure it's fresh
+console.log('⚙️ Generating Prisma client...');
 
-console.log(`🔍 Prisma client exists: ${prismaClientExists}`);
-
-if (!prismaClientExists) {
-  console.log('⚙️ Prisma client not found, attempting to generate...');
+try {
+  // Load environment variables
+  require('./load-env.js');
   
-  try {
-    // Load environment variables
-    require('./load-env.js');
-    
-    // Set a dummy DATABASE_URL if not present (for client generation only)
-    if (!process.env.DATABASE_URL) {
-      process.env.DATABASE_URL = 'postgresql://dummy:dummy@localhost:5432/dummy';
-      console.log('🔧 Using dummy DATABASE_URL for client generation');
-    }
-    
-    // Generate Prisma client
-    console.log('🔄 Generating Prisma client...');
-    execSync('npx prisma generate', { 
-      stdio: 'inherit',
-      cwd: path.join(__dirname, '..'),
-      env: process.env
-    });
-    
-    // Verify generation
-    if (fs.existsSync(prismaClientPath)) {
-      console.log('✅ Prisma client generated successfully!');
-    } else {
-      console.log('⚠️ Prisma client generation completed but file not found');
-    }
-    
-  } catch (error) {
-    console.error('❌ Failed to generate Prisma client:', error.message);
-    
-    if (isAzure) {
-      console.log('⚠️ Continuing with deployment - app will attempt to use pre-built client');
-    } else {
-      console.log('💡 Try running "npm run prisma:generate" manually');
+  // Set a dummy DATABASE_URL if not present (for client generation only)
+  if (!process.env.DATABASE_URL) {
+    process.env.DATABASE_URL = 'postgresql://dummy:dummy@localhost:5432/dummy';
+    console.log('🔧 Using dummy DATABASE_URL for client generation');
+  }
+  
+  // Generate Prisma client with verbose output
+  console.log('🔄 Generating Prisma client...');
+  execSync('npx prisma generate --schema=./prisma/schema.prisma', { 
+    stdio: 'inherit',
+    cwd: path.join(__dirname, '..'),
+    env: process.env
+  });
+  
+  // Check multiple possible locations for the generated client
+  const possiblePaths = [
+    path.join(__dirname, '..', 'node_modules', '.prisma', 'client', 'index.js'),
+    path.join(__dirname, '..', '.prisma', 'client', 'index.js'),
+    path.join('/home/site/wwwroot', 'node_modules', '.prisma', 'client', 'index.js'),
+    path.join('/home/site/wwwroot', '.prisma', 'client', 'index.js')
+  ];
+  
+  let clientFound = false;
+  for (const clientPath of possiblePaths) {
+    if (fs.existsSync(clientPath)) {
+      console.log(`✅ Prisma client found at: ${clientPath}`);
+      clientFound = true;
+      break;
     }
   }
-} else {
-  console.log('✅ Prisma client already exists, skipping generation');
+  
+  if (!clientFound) {
+    console.log('⚠️ Prisma client not found in expected locations');
+    console.log('📂 Checking directory structure...');
+    
+    // List the node_modules directory to see what's there
+    const nodeModulesPath = path.join(__dirname, '..', 'node_modules');
+    if (fs.existsSync(nodeModulesPath)) {
+      const prismaDir = path.join(nodeModulesPath, '.prisma');
+      if (fs.existsSync(prismaDir)) {
+        console.log('📁 .prisma directory exists in node_modules');
+        const clientDir = path.join(prismaDir, 'client');
+        if (fs.existsSync(clientDir)) {
+          console.log('📁 client directory exists');
+          const files = fs.readdirSync(clientDir);
+          console.log('📄 Files in client directory:', files);
+        } else {
+          console.log('❌ client directory not found in .prisma');
+        }
+      } else {
+        console.log('❌ .prisma directory not found in node_modules');
+      }
+    }
+  }
+  
+} catch (error) {
+  console.error('❌ Failed to generate Prisma client:', error.message);
+  console.error('Full error:', error);
+  
+  if (isAzure) {
+    console.log('⚠️ Prisma generation failed in Azure - this will cause startup issues');
+  }
+  
+  // Don't exit with error code to allow deployment to continue
 }
 
 console.log('🏁 Azure postinstall completed');
