@@ -74,6 +74,59 @@ app.get('/env', (req, res) => {
   });
 });
 
+// Add IP detection endpoint
+app.get('/debug/ip-info', async (req, res) => {
+  try {
+    const axios = require('axios');
+    
+    // Get external IP from multiple sources
+    const ipSources = [
+      'https://api.ipify.org?format=json',
+      'https://ipapi.co/json/',
+      'https://httpbin.org/ip'
+    ];
+    
+    const ipResults = {};
+    
+    for (const source of ipSources) {
+      try {
+        const response = await axios.get(source, { timeout: 5000 });
+        ipResults[source] = response.data;
+      } catch (error) {
+        ipResults[source] = { error: error.message };
+      }
+    }
+    
+    // Also get Azure-specific headers
+    const azureHeaders = {
+      'x-forwarded-for': req.headers['x-forwarded-for'],
+      'x-real-ip': req.headers['x-real-ip'],
+      'x-azure-clientip': req.headers['x-azure-clientip'],
+      'x-forwarded-proto': req.headers['x-forwarded-proto'],
+      'x-arr-ssl': req.headers['x-arr-ssl']
+    };
+    
+    res.json({
+      message: 'Azure App Service IP Information',
+      timestamp: new Date().toISOString(),
+      requestHeaders: azureHeaders,
+      externalIpChecks: ipResults,
+      environment: {
+        NODE_ENV: process.env.NODE_ENV,
+        WEBSITE_SITE_NAME: process.env.WEBSITE_SITE_NAME,
+        WEBSITE_RESOURCE_GROUP: process.env.WEBSITE_RESOURCE_GROUP,
+        WEBSITE_HOSTNAME: process.env.WEBSITE_HOSTNAME
+      }
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to get IP information',
+      details: error.message
+    });
+  }
+});
+
 // Load routes 
 app.use('/api', require('./src/routes'));
 
