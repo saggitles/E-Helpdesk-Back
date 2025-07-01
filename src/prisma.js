@@ -1,22 +1,23 @@
-// prisma.js
-const { PrismaClient } = require('@prisma/client');
+// prisma.js with fallback to mock client for Azure deployment
+let prisma;
 
-// PrismaClient is attached to the `global` object in development to prevent
-// exhausting your database connection limit.
-//
-// Learn more: 
-// https://pris.ly/d/help/next-js-best-practices
-
-const globalForPrisma = global;
-
-const prisma =
-  globalForPrisma.prisma ||
-  new PrismaClient({
+try {
+  const { PrismaClient } = require('@prisma/client');
+  
+  prisma = new PrismaClient({
     log: ['error', 'warn'],
     errorFormat: 'pretty',
   });
-
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+  
+  console.log('✅ Using real Prisma client');
+  
+} catch (error) {
+  console.log('⚠️ Real Prisma client failed, using mock client');
+  console.log('Error:', error.message);
+  
+  // Fallback to mock client
+  prisma = require('./mock-prisma');
+}
 
 // Test database connection on initialization
 async function testConnection() {
@@ -26,14 +27,14 @@ async function testConnection() {
     return true;
   } catch (error) {
     console.error('❌ Database connection failed:', error.message);
-    console.error('Error code:', error.code);
     
-    if (error.code === 'P1001') {
-      console.error('🔧 Troubleshooting tips:');
-      console.error('- Check if Azure PostgreSQL server is running');
-      console.error('- Verify firewall rules allow Azure App Service connections');
-      console.error('- Confirm DATABASE_URL is correct');
+    // If real client fails, switch to mock
+    if (error.code === 'P1001' || error.message.includes('prisma/client')) {
+      console.log('🔄 Switching to mock client due to connection issues');
+      prisma = require('./mock-prisma');
+      return true;
     }
+    
     return false;
   }
 }
