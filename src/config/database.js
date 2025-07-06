@@ -30,7 +30,7 @@ const ehelpdeeskConfig = {
 // Snapshot Database Configuration (ngrok tunnel to local/remote database)
 const snapshotConfig = {
   host: process.env.SNAPSHOT_DB_HOST || '2.tcp.ngrok.io',
-  port: process.env.SNAPSHOT_DB_PORT || 11281,
+  port: process.env.SNAPSHOT_DB_PORT || 15425,
   database: process.env.SNAPSHOT_DB_NAME || 'E-helpdesk',
   user: process.env.SNAPSHOT_DB_USER || 'postgres',
   password: process.env.SNAPSHOT_DB_PASSWORD || 'admin',
