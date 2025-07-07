@@ -102,9 +102,12 @@ exports.getCustomers = async (req, res) => {
     
     console.log("Request parameters:", { site, customer, gmptCode });
     
-    // Updated validation: GMPT code search should not require customer
-    if (!gmptCode && !customer) {
-      return res.status(400).json({ error: "Either Customer or GMPT Code is required" });
+    // GMPT code search is completely independent and takes priority
+    if (gmptCode) {
+      console.log("🔍 GMPT search mode: ignoring customer/site parameters");
+    } else if (!customer) {
+      // Only require customer if no GMPT code is provided
+      return res.status(400).json({ error: "Customer is required when GMPT Code is not provided" });
     }
   
     const client = createFleetIQClient();
@@ -112,14 +115,13 @@ exports.getCustomers = async (req, res) => {
     try {
       await client.connect();
       
-      // Get vehicle IDs first
+      // Get vehicle IDs first - GMPT takes absolute priority
       let vehicleCDs = [];
       
       if (gmptCode) {
         console.log("Fetching by GMPT code:", gmptCode);
-        // Modified to use LIKE for partial matching
+        // GMPT search - completely independent of customer/site
         const cdQuery = `SELECT "VEHICLE_CD" FROM "FMS_VEHICLE_MST" WHERE "VEHICLE_ID" ILIKE $1;`;
-        // Add wildcards around gmptCode for substring matching
         const cdResult = await client.query(cdQuery, [`%${gmptCode}%`]);
         vehicleCDs = cdResult.rows.map(row => row.VEHICLE_CD);
         console.log(`Found ${vehicleCDs.length} vehicles for GMPT code`);
@@ -131,7 +133,7 @@ exports.getCustomers = async (req, res) => {
         const siteResult = await client.query(siteQuery, [site]);
         vehicleCDs = siteResult.rows.map(row => row.VEHICLE_CD);
         
-      } else if (customer) {
+      } else {
         console.log("Fetching by customer:", customer);
         const customerQuery = `SELECT "VEHICLE_CD" FROM "FMS_USR_VEHICLE_REL" WHERE "USER_CD" = $1;`;
         const customerResult = await client.query(customerQuery, [customer]);
