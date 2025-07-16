@@ -969,13 +969,6 @@ ORDER BY fvm."VEHICLE_CD";
 
   
 
-const dbConfig = {
-    host: '2.tcp.ngrok.io',
-    user: 'postgres',
-    password: 'admin',
-    database: 'E-helpdesk',
-    port: 11281,
-  };
   
   exports.getAvailableDates = async (req, res) => {
     const client = createSnapshotClient();
@@ -1065,9 +1058,19 @@ const dbConfig = {
     const formattedDate1 = format(new Date(date1), 'yyyy-MM-dd');
     const formattedDate2 = format(new Date(date2), 'yyyy-MM-dd');
   
-    const client = createSnapshotClient();
+    const snapshotClient = createSnapshotClient();
+    const fleetiqClient = createFleetIQClient();
+    
+    // Helper function to format dates consistently
+    const formatSnapshotDate = (timestamp) => {
+      if (!timestamp) return null;
+      const date = new Date(timestamp);
+      return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+    };
+    
     try {
-      await client.connect();
+      await snapshotClient.connect();
+      await fleetiqClient.connect();
   
       // Initialize query parameters with time and date values
       const queryParams = [formattedDate1, formattedDate2, time1, time2];
@@ -1110,7 +1113,7 @@ const dbConfig = {
         queryParams
       });
   
-      // Query snapshots within the time ranges
+      // Query snapshots within the time ranges with formatted dates
       const query = `
         SELECT DISTINCT ON (vehicle_cd, snapshot_time) *
         FROM (
@@ -1129,9 +1132,10 @@ const dbConfig = {
         ORDER BY vehicle_cd, snapshot_time, query_execution_date;
       `;
       
-      const result = await client.query(query, queryParams);
+      const result = await snapshotClient.query(query, queryParams);
       console.log(`Query returned ${result.rows.length} results`);
   
+      // Group snapshots by vehicle
       const pairedSnapshots = result.rows.reduce((acc, row) => {
         const vCode = row.vehicle_cd;
         if (!acc[vCode]) {
@@ -1144,14 +1148,102 @@ const dbConfig = {
         }
         return acc;
       }, {});
-  
 
-      res.json(pairedSnapshots);
+      // Extract unique customer_ids, site_ids, and dept_ids from snapshot data
+      const customerIds = new Set();
+      const siteIds = new Set();
+      const deptIds = new Set();
+      
+      result.rows.forEach(row => {
+        if (row.cust_id) customerIds.add(row.cust_id);
+        if (row.site_id) siteIds.add(row.site_id);
+        if (row.dept_id) deptIds.add(row.dept_id);
+      });
+
+      console.log('Unique customer IDs found:', Array.from(customerIds));
+      console.log('Unique site IDs found:', Array.from(siteIds));
+      console.log('Unique department IDs found:', Array.from(deptIds));
+
+      // Fetch customer names from FleetIQ
+      const customerNames = {};
+      if (customerIds.size > 0) {
+        const customerQuery = `
+          SELECT "USER_CD" as customer_id, "USER_NAME" as customer_name 
+          FROM "FMS_CUST_MST" 
+          WHERE "USER_CD" IN (${Array.from(customerIds).join(',')})
+        `;
+        const customerResult = await fleetiqClient.query(customerQuery);
+        customerResult.rows.forEach(row => {
+          customerNames[row.customer_id] = row.customer_name;
+        });
+        console.log('Fetched customer names:', customerNames);
+      }
+
+      // Fetch site names from FleetIQ
+      const siteNames = {};
+      if (siteIds.size > 0) {
+        const siteQuery = `
+          SELECT "LOCATION_CD" as site_id, "NAME" as site_name 
+          FROM "FMS_LOC_MST" 
+          WHERE "LOCATION_CD" IN (${Array.from(siteIds).join(',')})
+        `;
+        const siteResult = await fleetiqClient.query(siteQuery);
+        siteResult.rows.forEach(row => {
+          siteNames[row.site_id] = row.site_name;
+        });
+        console.log('Fetched site names:', siteNames);
+      }
+
+      // Fetch department names from FleetIQ
+      const deptNames = {};
+      if (deptIds.size > 0) {
+        const deptQuery = `
+          SELECT "DEPT_CD" as dept_id, "DEPT_NAME" as dept_name 
+          FROM "FMS_DEPT_MST" 
+          WHERE "DEPT_CD" IN (${Array.from(deptIds).join(',')})
+        `;
+        const deptResult = await fleetiqClient.query(deptQuery);
+        deptResult.rows.forEach(row => {
+          deptNames[row.dept_id] = row.dept_name;
+        });
+        console.log('Fetched department names:', deptNames);
+      }
+
+      // Enrich snapshot data with names from FleetIQ and format dates
+      const enrichedSnapshots = {};
+      Object.keys(pairedSnapshots).forEach(vehicleCode => {
+        const vehicleData = pairedSnapshots[vehicleCode];
+        
+        // Enrich 'before' snapshot
+        if (vehicleData.before && Object.keys(vehicleData.before).length > 0) {
+          vehicleData.before.customer_name = customerNames[vehicleData.before.cust_id] || 'Unknown Customer';
+          vehicleData.before.site_name = siteNames[vehicleData.before.site_id] || 'Unknown Site';
+          vehicleData.before.dept_name = deptNames[vehicleData.before.dept_id] || 'Unknown Department';
+          // Format the snapshot date
+          vehicleData.before.snapshot_date = vehicleData.before.formatted_date || formatSnapshotDate(vehicleData.before.query_execution_date);
+        }
+        
+        // Enrich 'after' snapshot
+        if (vehicleData.after && Object.keys(vehicleData.after).length > 0) {
+          vehicleData.after.customer_name = customerNames[vehicleData.after.cust_id] || 'Unknown Customer';
+          vehicleData.after.site_name = siteNames[vehicleData.after.site_id] || 'Unknown Site';
+          vehicleData.after.dept_name = deptNames[vehicleData.after.dept_id] || 'Unknown Department';
+          // Format the snapshot date
+          vehicleData.after.snapshot_date = vehicleData.after.formatted_date || formatSnapshotDate(vehicleData.after.query_execution_date);
+        }
+        
+        enrichedSnapshots[vehicleCode] = vehicleData;
+      });
+
+      console.log('✅ Enriched snapshot data with customer names, site names, department names, and formatted dates');
+      res.json(enrichedSnapshots);
+      
     } catch (error) {
       console.error('Error fetching snapshots:', error.message);
       res.status(500).json({ error: 'Internal server error fetching snapshots' });
     } finally {
-      await client.end();
+      await snapshotClient.end();
+      await fleetiqClient.end();
     }
   };
 
