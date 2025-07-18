@@ -27,7 +27,8 @@ router.put('/tickets/assign/:id', ticketControllers.updateTicket)
 router.get('/tickets/:ticketId/assigneduser', controllers.getAssignedUserForTicket);
 
 
-router.post('/tickets', ticketControllers.createTicket);
+// Add authentication middleware to ticket creation
+router.post('/tickets', ticketControllers.requirePermission('create:ticket'), ticketControllers.createTicket);
 router.get('/gmpt-codes', ticketControllers.getGmptCodesBySite);
 router.put('/tickets/update/:id', ticketControllers.updateTicket);
 router.get('/tickets/:id', ticketControllers.getTicket);

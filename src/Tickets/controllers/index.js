@@ -47,6 +47,10 @@ app.use(express.json());
       next();
     };
   };
+
+  // Export the requirePermission function
+  exports.requirePermission = requirePermission;
+
   exports.createTicket = async (req, res) => {
 
     console.log('holis')
