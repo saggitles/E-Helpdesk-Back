@@ -340,19 +340,20 @@ WHERE fvm."VEHICLE_CD" = $1;
         try {
           const query = `
             SELECT 
-            fdb."VEHICLE_CD", 
-            jsonb_build_object(
-              'blacklistedDriver', fum_blacklist."CONTACT_FIRST_NAME" || ' ' || fum_blacklist."CONTACT_LAST_NAME",
-              'card_id', fum_blacklist."CARD_ID",
-              'driver_id', fum_blacklist."DRIVER_ID"
-            ) AS blacklisted_driver
-          FROM 
-            "FMS_DRIVER_BLKLST" fdb
-          JOIN 
-            "FMS_USR_MST" fum_blacklist 
-            ON fdb."USER_CD" = fum_blacklist."USER_CD"
-          WHERE 
-            fdb."VEHICLE_CD"  = ANY($1);
+              fdb."VEHICLE_CD", 
+              jsonb_build_object(
+                'blacklistedDriver', fum_blacklist."CONTACT_FIRST_NAME" || ' ' || fum_blacklist."CONTACT_LAST_NAME",
+                'card_id', fum_blacklist."CARD_ID",
+                'driver_id', fum_blacklist."DRIVER_ID"
+              ) AS blacklisted_driver
+            FROM 
+              "FMS_DRIVER_BLKLST" fdb
+            JOIN 
+              "FMS_USR_MST" fum_blacklist 
+              ON fdb."USER_CD" = fum_blacklist."USER_CD"
+            WHERE 
+              fdb."VEHICLE_CD" = ANY($1)
+              AND fdb."ACTIVE" = TRUE;
           `;
 
           // Wrap vehicleCD in an array
