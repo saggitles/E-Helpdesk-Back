@@ -789,36 +789,48 @@ ORDER BY fvm."VEHICLE_CD";
         
         // Calculate screen version in JS
         let screenVersion = 'unknown';
-        if (row.curr_ver) {
+        console.log(`Vehicle ${row.VEHICLE_CD}: CURR_VER = ${row.CURR_VER}, type: ${typeof row.CURR_VER}`);
+        
+        if (row.CURR_VER) {
           try {
             // Parse and process version data in JS
-            const currVerString = String(row.curr_ver);
+            const currVerString = String(row.CURR_VER);
+            console.log(`Vehicle ${row.VEHICLE_CD}: currVerString = ${currVerString}, length = ${currVerString.length}`);
+            
             if (currVerString.length >= 15) {
               // Use simpler logic without bit operations
               const versionType = parseInt(currVerString.substring(0, 1), 16);
+              console.log(`Vehicle ${row.VEHICLE_CD}: versionType = ${versionType}`);
               if (versionType === 1) screenVersion = 'MK1';
               else if (versionType === 2) screenVersion = 'MK2';
               else if (versionType === 5) screenVersion = 'MK3';
             } else {
               // Handle shorter version string
               const versionType = parseInt(currVerString.substring(0, 1), 16);
+              console.log(`Vehicle ${row.VEHICLE_CD}: short versionType = ${versionType}`);
               if (versionType === 1) screenVersion = 'MK1';
               else if (versionType === 2) screenVersion = 'MK2';
               else if (versionType === 5) screenVersion = 'MK3';
             }
+            console.log(`Vehicle ${row.VEHICLE_CD}: final screenVersion = ${screenVersion}`);
           } catch (e) {
+            console.error(`Vehicle ${row.VEHICLE_CD}: Error calculating screen version:`, e);
             screenVersion = 'unknown';
           }
+        } else {
+          console.log(`Vehicle ${row.VEHICLE_CD}: No CURR_VER data available`);
         }
         
         // Calculate firmware version in JS
         let firmwareVersion = 'unknown';
-        if (row.mk3dbg) {
-          firmwareVersion = String(row.mk3dbg);
-        } else if (row.curr_ver) {
+        console.log(`Vehicle ${row.VEHICLE_CD}: MK3DBG = ${row.MK3DBG}, CURR_VER = ${row.CURR_VER}`);
+        
+        if (row.MK3DBG) {
+          firmwareVersion = String(row.MK3DBG);
+        } else if (row.CURR_VER) {
           try {
             // Simplified version calculation
-            const currVerString = String(row.curr_ver);
+            const currVerString = String(row.CURR_VER);
             if (currVerString.length >= 15) {
               const part1 = parseInt(currVerString.substring(0, 1), 16);
               const part2 = parseInt(currVerString.substring(1, 3), 16);
@@ -831,9 +843,12 @@ ORDER BY fvm."VEHICLE_CD";
               firmwareVersion = `${part1}.${part2}.${part3}`;
             }
           } catch (e) {
+            console.error(`Vehicle ${row.VEHICLE_CD}: Error calculating firmware version:`, e);
             firmwareVersion = 'unknown';
           }
         }
+        
+        console.log(`Vehicle ${row.VEHICLE_CD}: final firmwareVersion = ${firmwareVersion}, expansionVersion = ${row.EXPMOD_VER}`);
         
         // Calculate red impact threshold in JS with better error handling
         let redImpactThreshold = 0;
