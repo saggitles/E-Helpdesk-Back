@@ -989,20 +989,49 @@ ORDER BY fvm."VEHICLE_CD";
 
   
   exports.getAvailableDates = async (req, res) => {
+    const { customer, site, gmptCode } = req.query;
     const client = createSnapshotClient();
-  
+
     try {
       await client.connect();
-  
+
+      // Build filter conditions for selecting dates from vehicles that match current filters
+      let vehicleFilterConditions = '';
+      const queryParams = [];
+      
+      if (gmptCode) {
+        // If filtering by GMPT code, get dates from that specific vehicle
+        vehicleFilterConditions = ` WHERE "gmptCode" ILIKE $1`;
+        queryParams.push(`%${gmptCode}%`);
+        console.log('Getting available dates for GMPT Code:', gmptCode);
+      } else if (customer) {
+        // If filtering by customer, get dates from vehicles belonging to that customer
+        const customerInt = parseInt(customer);
+        vehicleFilterConditions = ` WHERE "cust_id" = $1`;
+        queryParams.push(customerInt);
+        console.log('Getting available dates for Customer:', customerInt);
+        
+        // Add site filter if provided
+        if (site) {
+          const siteInt = parseInt(site);
+          vehicleFilterConditions += ` AND "site_id" = $2`;
+          queryParams.push(siteInt);
+          console.log('Getting available dates for Site:', siteInt);
+        }
+      }
+
+      // Optimized query: Get dates from vehicles that match the current filters
       const query = `
-      SELECT DISTINCT query_execution_date AS date
-      FROM "vehicle_info"
-      ORDER BY date DESC;
-    `;
-  
-      const result = await client.query(query);
+        SELECT DISTINCT DATE(query_execution_date) AS date
+        FROM "vehicle_info"
+        ${vehicleFilterConditions}
+        ORDER BY date DESC;
+      `;
+
+      const result = await client.query(query, queryParams);
       const dates = result.rows.map((row) => row.date);
-  
+
+      console.log(`Found ${dates.length} available dates with applied filters (optimized query)`);
       res.json(dates);
     } catch (error) {
       console.error('Error fetching available dates:', error.message);
@@ -1011,8 +1040,6 @@ ORDER BY fvm."VEHICLE_CD";
       await client.end();
     }
   };
-  
-  
   
   
   
