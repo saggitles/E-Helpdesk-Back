@@ -1147,8 +1147,19 @@ ORDER BY fvm."VEHICLE_CD";
     // Helper function to format dates consistently
     const formatSnapshotDate = (timestamp) => {
       if (!timestamp) return null;
-      const date = new Date(timestamp);
-      return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+      
+      try {
+        const date = new Date(timestamp);
+        // Check if the date is valid
+        if (isNaN(date.getTime())) {
+          console.warn('Invalid date timestamp:', timestamp);
+          return null;
+        }
+        return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+      } catch (error) {
+        console.error('Error formatting date:', timestamp, error);
+        return null;
+      }
     };
     
     try {
