@@ -378,7 +378,7 @@ WHERE fvm."VEHICLE_CD" = $1;
       
       return res.status(200).json(vehicleLogins);
     } catch (err) {
-      console.error("Error fetching card swipes:", err.message);
+      console.error "Error fetching card swipes:", err.message);
       return res.status(500).json({ 
         error: "Failed to fetch card swipes", 
         details: err.message 
@@ -883,7 +883,7 @@ ORDER BY fvm."VEHICLE_CD";
             seat_idle: row.seat_idle,
             site_name: row.site_name,
             department: row.department,
-            sim_number: row.sim_number,
+            sim_number: row.sim_number || 'N/A',
             vor_setting: row.vor_setting,
             lockout_code: row.lockout_code,
             vehicle_name: row.vehicle_name,
@@ -898,7 +898,7 @@ ORDER BY fvm."VEHICLE_CD";
             survey_timeout: row.survey_timeout,
             last_connection: formatDate(row.last_connection),
             firmware_version: firmwareVersion,
-            expansion_version: row.expmod_ver,
+            expansion_version: row.EXPMOD_VER || 'N/A',
             full_lockout_enabled: row.full_lockout_enabled,
             full_lockout_timeout: row.full_lockout_timeout,
             last_dlist_timestamp: formatDate(row.dlist_timestamp),
@@ -1018,26 +1018,64 @@ ORDER BY fvm."VEHICLE_CD";
   
   
   exports.getAvailableTimes = async (req, res) => {
-    const { date } = req.query;
+    const { date, customer, site, gmptCode } = req.query;
     const client = createSnapshotClient();
-  
+
     try {
       await client.connect();
-  
+
+      // Build filter conditions for selecting the representative vehicle
+      // This ensures we get times from a vehicle that matches the current filters
+      let vehicleFilterConditions = '';
+      const queryParams = [date];
+      
+      if (gmptCode) {
+        // If filtering by GMPT code, use that vehicle specifically
+        vehicleFilterConditions = ` AND "gmptCode" ILIKE $2`;
+        queryParams.push(`%${gmptCode}%`);
+        console.log('Getting available times for GMPT Code:', gmptCode);
+      } else if (customer) {
+        // If filtering by customer, get times from a vehicle belonging to that customer
+        const customerInt = parseInt(customer);
+        vehicleFilterConditions = ` AND "cust_id" = $2`;
+        queryParams.push(customerInt);
+        console.log('Getting available times for Customer:', customerInt);
+        
+        // Add site filter if provided
+        if (site) {
+          const siteInt = parseInt(site);
+          vehicleFilterConditions += ` AND "site_id" = $3`;
+          queryParams.push(siteInt);
+          console.log('Getting available times for Site:', siteInt);
+        }
+      }
+
+      // Optimized query: Get times from a vehicle that matches the current filters
       const query = `
-        SELECT MIN(snapshot_id) AS id, TO_CHAR(query_execution_date, 'HH24:MI') AS time
+        WITH filtered_vehicle AS (
+          SELECT vehicle_cd 
+          FROM vehicle_info 
+          WHERE DATE(query_execution_date) = $1 
+          ${vehicleFilterConditions}
+          LIMIT 1
+        )
+        SELECT 
+          MIN(snapshot_id) AS id, 
+          TO_CHAR(query_execution_date, 'HH24:MI') AS time
         FROM vehicle_info
         WHERE DATE(query_execution_date) = $1
+          AND vehicle_cd = (SELECT vehicle_cd FROM filtered_vehicle)
         GROUP BY TO_CHAR(query_execution_date, 'HH24:MI')
         ORDER BY time ASC;
       `;
-  
-      const result = await client.query(query, [date]);
+
+      const result = await client.query(query, queryParams);
       const times = result.rows.map(row => ({
         ID: row.id,
         time: row.time,
       }));
-  
+
+      console.log(`Found ${times.length} available times for date ${date} with applied filters (optimized query)`);
       res.json(times);
     } catch (error) {
       console.error('Error fetching times:', error.message);
