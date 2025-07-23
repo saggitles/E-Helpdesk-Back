@@ -378,7 +378,7 @@ WHERE fvm."VEHICLE_CD" = $1;
       
       return res.status(200).json(vehicleLogins);
     } catch (err) {
-      console.error "Error fetching card swipes:", err.message);
+      console.error("Error fetching card swipes:", err.message);
       return res.status(500).json({ 
         error: "Failed to fetch card swipes", 
         details: err.message 
