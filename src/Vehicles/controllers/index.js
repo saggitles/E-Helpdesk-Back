@@ -1046,10 +1046,17 @@ ORDER BY fvm."VEHICLE_CD";
   
   exports.getAvailableTimes = async (req, res) => {
     const { date, customer, site, gmptCode } = req.query;
+    console.log('🔍 ===== getAvailableTimes ENDPOINT HIT =====');
+    console.log('🔍 Request URL:', req.url);
+    console.log('🔍 Request method:', req.method);
+    console.log('🔍 getAvailableTimes called with:', { date, customer, site, gmptCode });
+    console.log('🔍 All query params:', req.query);
+    
     const client = createSnapshotClient();
 
     try {
       await client.connect();
+      console.log('🔍 Database connection established');
 
       // Build filter conditions for selecting the representative vehicle
       // This ensures we get times from a vehicle that matches the current filters
@@ -1077,6 +1084,9 @@ ORDER BY fvm."VEHICLE_CD";
         }
       }
 
+      console.log('📊 Final query parameters:', queryParams);
+      console.log('📊 Filter conditions string:', vehicleFilterConditions);
+
       // Optimized query: Get times from a vehicle that matches the current filters
       const query = `
         WITH filtered_vehicle AS (
@@ -1088,27 +1098,86 @@ ORDER BY fvm."VEHICLE_CD";
         )
         SELECT 
           MIN(snapshot_id) AS id, 
-          TO_CHAR(query_execution_date, 'HH24:MI') AS time
+          TO_CHAR(query_execution_date, 'HH24:MI') AS time,
+          query_execution_date
         FROM vehicle_info
         WHERE DATE(query_execution_date) = $1
           AND vehicle_cd = (SELECT vehicle_cd FROM filtered_vehicle)
-        GROUP BY TO_CHAR(query_execution_date, 'HH24:MI')
+        GROUP BY TO_CHAR(query_execution_date, 'HH24:MI'), query_execution_date
         ORDER BY time ASC;
       `;
 
+      console.log('📊 Executing SQL query:', query);
       const result = await client.query(query, queryParams);
-      const times = result.rows.map(row => ({
-        ID: row.id,
-        time: row.time,
-      }));
+      
+      console.log('📊 ===== DATABASE RESULT =====');
+      console.log('📊 Number of rows returned:', result.rows.length);
+      console.log('📊 Raw rows data:');
+      result.rows.forEach((row, index) => {
+        console.log(`📊 Row ${index}:`, {
+          id: row.id,
+          time: row.time,
+          query_execution_date: row.query_execution_date,
+          id_type: typeof row.id,
+          time_type: typeof row.time,
+          date_type: typeof row.query_execution_date
+        });
+      });
 
-      console.log(`Found ${times.length} available times for date ${date} with applied filters (optimized query)`);
+      const times = result.rows.map((row, index) => {
+        console.log(`📊 Processing row ${index}:`);
+        console.log(`📊   - Original row:`, JSON.stringify(row, null, 2));
+        console.log(`📊   - ID: ${row.id} (${typeof row.id})`);
+        console.log(`📊   - Time: ${row.time} (${typeof row.time})`);
+        
+        // Validate time format
+        if (!row.time || typeof row.time !== 'string') {
+          console.error(`❌ Invalid time value at row ${index}:`, row.time);
+        }
+        
+        // Validate ID
+        if (!row.id || (typeof row.id !== 'number' && typeof row.id !== 'string')) {
+          console.error(`❌ Invalid ID value at row ${index}:`, row.id);
+        }
+        
+        return {
+          ID: row.id,
+          time: row.time,
+        };
+      });
+
+      console.log('📊 ===== FINAL RESPONSE =====');
+      console.log('📊 Times array length:', times.length);
+      console.log('📊 Final times data:');
+      times.forEach((time, index) => {
+        console.log(`📊 Time ${index}:`, {
+          ID: time.ID,
+          time: time.time,
+          ID_type: typeof time.ID,
+          time_type: typeof time.time
+        });
+      });
+      
+      console.log(`✅ Returning ${times.length} available times for date ${date}`);
+      
+      // Add headers to help with debugging
+      res.setHeader('X-Times-Count', times.length.toString());
+      res.setHeader('X-Date-Requested', date);
+      
       res.json(times);
+      
     } catch (error) {
-      console.error('Error fetching times:', error.message);
-      res.status(500).json({ error: 'Failed to fetch times' });
+      console.error('❌ ===== ERROR IN getAvailableTimes =====');
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Error stack:', error.stack);
+      res.status(500).json({ error: 'Failed to fetch times', details: error.message });
     } finally {
-      await client.end();
+      try {
+        await client.end();
+        console.log('🔍 Database connection closed');
+      } catch (closeError) {
+        console.error('❌ Error closing database connection:', closeError);
+      }
     }
   };
   
