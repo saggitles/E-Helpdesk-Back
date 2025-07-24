@@ -1052,6 +1052,15 @@ ORDER BY fvm."VEHICLE_CD";
     console.log('🔍 getAvailableTimes called with:', { date, customer, site, gmptCode });
     console.log('🔍 All query params:', req.query);
     
+    // 🚨 CRITICAL FIX: If no filters provided, return error instead of random data
+    if (!customer && !site && !gmptCode) {
+      console.log('❌ No filters provided - this will cause frontend issues');
+      return res.status(400).json({ 
+        error: 'At least one filter (customer, site, or gmptCode) is required',
+        message: 'Available times must be filtered to match snapshot context'
+      });
+    }
+    
     const client = createSnapshotClient();
 
     try {
@@ -1064,18 +1073,15 @@ ORDER BY fvm."VEHICLE_CD";
       const queryParams = [date];
       
       if (gmptCode) {
-        // If filtering by GMPT code, use that vehicle specifically
         vehicleFilterConditions = ` AND "gmptCode" ILIKE $2`;
         queryParams.push(`%${gmptCode}%`);
         console.log('Getting available times for GMPT Code:', gmptCode);
       } else if (customer) {
-        // If filtering by customer, get times from a vehicle belonging to that customer
         const customerInt = parseInt(customer);
         vehicleFilterConditions = ` AND "cust_id" = $2`;
         queryParams.push(customerInt);
         console.log('Getting available times for Customer:', customerInt);
         
-        // Add site filter if provided
         if (site) {
           const siteInt = parseInt(site);
           vehicleFilterConditions += ` AND "site_id" = $3`;
@@ -1112,34 +1118,9 @@ ORDER BY fvm."VEHICLE_CD";
       
       console.log('📊 ===== DATABASE RESULT =====');
       console.log('📊 Number of rows returned:', result.rows.length);
-      console.log('📊 Raw rows data:');
-      result.rows.forEach((row, index) => {
-        console.log(`📊 Row ${index}:`, {
-          id: row.id,
-          time: row.time,
-          query_execution_date: row.query_execution_date,
-          id_type: typeof row.id,
-          time_type: typeof row.time,
-          date_type: typeof row.query_execution_date
-        });
-      });
 
+      // Simplified processing - remove extra validation that might cause issues
       const times = result.rows.map((row, index) => {
-        console.log(`📊 Processing row ${index}:`);
-        console.log(`📊   - Original row:`, JSON.stringify(row, null, 2));
-        console.log(`📊   - ID: ${row.id} (${typeof row.id})`);
-        console.log(`📊   - Time: ${row.time} (${typeof row.time})`);
-        
-        // Validate time format
-        if (!row.time || typeof row.time !== 'string') {
-          console.error(`❌ Invalid time value at row ${index}:`, row.time);
-        }
-        
-        // Validate ID
-        if (!row.id || (typeof row.id !== 'number' && typeof row.id !== 'string')) {
-          console.error(`❌ Invalid ID value at row ${index}:`, row.id);
-        }
-        
         return {
           ID: row.id,
           time: row.time,
@@ -1148,19 +1129,12 @@ ORDER BY fvm."VEHICLE_CD";
 
       console.log('📊 ===== FINAL RESPONSE =====');
       console.log('📊 Times array length:', times.length);
-      console.log('📊 Final times data:');
-      times.forEach((time, index) => {
-        console.log(`📊 Time ${index}:`, {
-          ID: time.ID,
-          time: time.time,
-          ID_type: typeof time.ID,
-          time_type: typeof time.time
-        });
-      });
+      console.log('📊 Sending response:', JSON.stringify(times));
       
       console.log(`✅ Returning ${times.length} available times for date ${date}`);
       
       // Add headers to help with debugging
+      res.setHeader('Content-Type', 'application/json');
       res.setHeader('X-Times-Count', times.length.toString());
       res.setHeader('X-Date-Requested', date);
       
