@@ -990,6 +990,10 @@ ORDER BY fvm."VEHICLE_CD";
   
   exports.getAvailableDates = async (req, res) => {
     const { customer, site, gmptCode } = req.query;
+    console.log('📅 ===== getAvailableDates ENDPOINT HIT =====');
+    console.log('📅 Request URL:', req.url);
+    console.log('📅 Request params:', { customer, site, gmptCode });
+    
     const client = createSnapshotClient();
 
     try {
@@ -1031,10 +1035,21 @@ ORDER BY fvm."VEHICLE_CD";
       const result = await client.query(query, queryParams);
       const dates = result.rows.map((row) => row.date);
 
-      console.log(`Found ${dates.length} available dates with applied filters (optimized query)`);
+      console.log('📅 ===== FINAL API RESPONSE FOR getAvailableDates =====');
+      console.log('📅 Response Status: 200');
+      console.log('📅 Response Headers: Content-Type: application/json');
+      console.log('📅 Response Body (JSON):');
+      console.log(JSON.stringify(dates, null, 2));
+      console.log('📅 Sample structure for frontend:');
+      if (dates.length > 0) {
+        console.log('📅 Each date is a string in format: YYYY-MM-DD');
+        console.log('📅 Example date:', dates[0], '(type:', typeof dates[0], ')');
+      }
+      console.log('📅 ================================================');
+
       res.json(dates);
     } catch (error) {
-      console.error('Error fetching available dates:', error.message);
+      console.error('❌ Error fetching available dates:', error.message);
       res.status(500).json({ error: 'Failed to fetch available dates' });
     } finally {
       await client.end();
@@ -1052,13 +1067,10 @@ ORDER BY fvm."VEHICLE_CD";
     console.log('🔍 getAvailableTimes called with:', { date, customer, site, gmptCode });
     console.log('🔍 All query params:', req.query);
     
-    // 🚨 CRITICAL FIX: If no filters provided, return error instead of random data
+    // 🚨 TEMPORARY: Allow unfiltered requests but warn about potential issues
     if (!customer && !site && !gmptCode) {
-      console.log('❌ No filters provided - this will cause frontend issues');
-      return res.status(400).json({ 
-        error: 'At least one filter (customer, site, or gmptCode) is required',
-        message: 'Available times must be filtered to match snapshot context'
-      });
+      console.log('⚠️  WARNING: No filters provided - this may cause inconsistent snapshot data');
+      console.log('⚠️  Frontend should pass customer/site/gmptCode filters to match snapshot context');
     }
     
     const client = createSnapshotClient();
@@ -1068,7 +1080,6 @@ ORDER BY fvm."VEHICLE_CD";
       console.log('🔍 Database connection established');
 
       // Build filter conditions for selecting the representative vehicle
-      // This ensures we get times from a vehicle that matches the current filters
       let vehicleFilterConditions = '';
       const queryParams = [date];
       
@@ -1088,12 +1099,14 @@ ORDER BY fvm."VEHICLE_CD";
           queryParams.push(siteInt);
           console.log('Getting available times for Site:', siteInt);
         }
+      } else {
+        console.log('⚠️  Getting available times from any vehicle (no filters provided)');
       }
 
       console.log('📊 Final query parameters:', queryParams);
       console.log('📊 Filter conditions string:', vehicleFilterConditions);
 
-      // Optimized query: Get times from a vehicle that matches the current filters
+      // Optimized query: Get times from a vehicle that matches the current filters (or any vehicle if no filters)
       const query = `
         WITH filtered_vehicle AS (
           SELECT vehicle_cd 
@@ -1113,13 +1126,8 @@ ORDER BY fvm."VEHICLE_CD";
         ORDER BY time ASC;
       `;
 
-      console.log('📊 Executing SQL query:', query);
       const result = await client.query(query, queryParams);
       
-      console.log('📊 ===== DATABASE RESULT =====');
-      console.log('📊 Number of rows returned:', result.rows.length);
-
-      // Simplified processing - remove extra validation that might cause issues
       const times = result.rows.map((row, index) => {
         return {
           ID: row.id,
@@ -1127,13 +1135,18 @@ ORDER BY fvm."VEHICLE_CD";
         };
       });
 
-      console.log('📊 ===== FINAL RESPONSE =====');
-      console.log('📊 Times array length:', times.length);
-      console.log('📊 Sending response:', JSON.stringify(times));
+      console.log('📊 ===== FINAL API RESPONSE FOR getAvailableTimes =====');
+      console.log('📊 Response Status: 200');
+      console.log('📊 Response Headers: Content-Type: application/json');
+      console.log('📊 Response Body (JSON):');
+      console.log(JSON.stringify(times, null, 2));
+      console.log('📊 Sample structure for frontend:');
+      if (times.length > 0) {
+        console.log('📊   - ID (number):', times[0].ID, '(type:', typeof times[0].ID, ')');
+        console.log('📊   - time (string):', times[0].time, '(type:', typeof times[0].time, ')');
+      }
+      console.log('📊 ================================================');
       
-      console.log(`✅ Returning ${times.length} available times for date ${date}`);
-      
-      // Add headers to help with debugging
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('X-Times-Count', times.length.toString());
       res.setHeader('X-Date-Requested', date);
@@ -1373,6 +1386,44 @@ ORDER BY fvm."VEHICLE_CD";
       });
 
       console.log('✅ Enriched snapshot data with customer names, site names, department names, and formatted dates');
+      
+      console.log('📦 ===== FINAL API RESPONSE FOR getVehicleSnapshots =====');
+      console.log('📦 Response Status: 200');
+      console.log('📦 Response Headers: Content-Type: application/json');
+      console.log('📦 Response Body Structure:');
+      console.log('📦 Object keys (vehicle codes):', Object.keys(enrichedSnapshots));
+      console.log('📦 Number of vehicles in response:', Object.keys(enrichedSnapshots).length);
+      
+      // Show sample structure for first vehicle
+      const firstVehicleCode = Object.keys(enrichedSnapshots)[0];
+      if (firstVehicleCode) {
+        console.log('📦 Sample vehicle structure for vehicle', firstVehicleCode, ':');
+        const sampleVehicle = enrichedSnapshots[firstVehicleCode];
+        console.log('📦   - before snapshot exists:', !!sampleVehicle.before && Object.keys(sampleVehicle.before).length > 0);
+        console.log('📦   - after snapshot exists:', !!sampleVehicle.after && Object.keys(sampleVehicle.after).length > 0);
+        
+        if (sampleVehicle.before && Object.keys(sampleVehicle.before).length > 0) {
+          console.log('📦   - before.snapshot_date:', sampleVehicle.before.snapshot_date, '(type:', typeof sampleVehicle.before.snapshot_date, ')');
+          console.log('📦   - before.customer_name:', sampleVehicle.before.customer_name);
+          console.log('📦   - before.site_name:', sampleVehicle.before.site_name);
+          console.log('📦   - before.query_execution_date:', sampleVehicle.before.query_execution_date, '(type:', typeof sampleVehicle.before.query_execution_date, ')');
+        }
+        
+        if (sampleVehicle.after && Object.keys(sampleVehicle.after).length > 0) {
+          console.log('📦   - after.snapshot_date:', sampleVehicle.after.snapshot_date, '(type:', typeof sampleVehicle.after.snapshot_date, ')');
+          console.log('📦   - after.customer_name:', sampleVehicle.after.customer_name);
+          console.log('📦   - after.site_name:', sampleVehicle.after.site_name);
+          console.log('📦   - after.query_execution_date:', sampleVehicle.after.query_execution_date, '(type:', typeof sampleVehicle.after.query_execution_date, ')');
+        }
+      }
+      
+      console.log('📦 Frontend should expect:');
+      console.log('📦   - Object with vehicle codes as keys');
+      console.log('📦   - Each vehicle has "before" and "after" properties');
+      console.log('📦   - snapshot_date is either formatted string or null');
+      console.log('📦   - query_execution_date is ISO string from database');
+      console.log('📦 ================================================');
+      
       res.json(enrichedSnapshots);
       
     } catch (error) {
